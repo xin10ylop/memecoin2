@@ -273,6 +273,7 @@ class LiveTrader:
             lp.pos.remaining_frac = lp.tokens / lp.original_tokens if lp.original_tokens else 0.0
             if dec.reason in ("ladder", "cost_recovery"):
                 lp.pos.rungs_hit += 1
+            self.risk.on_partial_exit(mint, res.sol_delta)
             self.n_exits += 1
             x = px_sol / lp.pos.entry_price if lp.pos.entry_price else 0.0
             log.info("SELL %-12s %5.1f%% @ %.2fx [%s] remaining=%.0f%%",
@@ -335,10 +336,10 @@ class LiveTrader:
             if self.stop.is_set():
                 break
             s = self.risk.summary()
-            log.info("up=%s watch=%d open=%d entries=%d exits=%d | bankroll=%.4f pnl=%+.4f | %s %s",
+            log.info("up=%s watch=%d open=%d(%d at risk) entries=%d exits=%d | bankroll=%.4f pnl=%+.4f | %s %s",
                      human_age(now() - started), len(self.history), len(self.positions),
-                     self.n_entries, self.n_exits, s["bankroll_sol"], s["realized_pnl_sol"],
-                     self.regime.band,
+                     s["at_risk_positions"], self.n_entries, self.n_exits,
+                     s["bankroll_sol"], s["realized_pnl_sol"], self.regime.band,
                      f"HALTED({s['halt_reason']})" if s["halted"] else "")
 
     def run(self) -> None:

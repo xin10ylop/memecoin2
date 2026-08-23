@@ -1,4 +1,6 @@
 """Safety filters and portfolio risk."""
+import pytest
+
 from degen.risk.manager import RiskConfig, RiskManager
 from degen.safety.filters import SafetyConfig, check_local
 
@@ -139,3 +141,42 @@ def test_operator_can_resume_after_a_halt():
     # that the block is no longer the halt.
     ok, why = rm.can_enter("Z")
     assert ok or "halted" not in why
+
+
+# ---------------- capital-at-risk accounting ----------------
+
+def test_a_recovered_position_frees_its_slot():
+    rm = RiskManager(RiskConfig(max_open_positions=1, min_seconds_between_entries=0))
+    rm.on_entry("A", 1.0, creator="d1")
+    assert not rm.can_enter("B", creator="d2")[0]
+    rm.on_partial_exit("A", 1.2)          # cost basis returned, running on house money
+    assert rm.at_risk_positions() == 0
+    assert rm.can_enter("B", creator="d2")[0]
+
+
+def test_a_partially_recovered_position_still_holds_its_slot():
+    rm = RiskManager(RiskConfig(max_open_positions=1, min_seconds_between_entries=0))
+    rm.on_entry("A", 1.0, creator="d1")
+    rm.on_partial_exit("A", 0.4)
+    assert rm.at_risk_positions() == 1
+    assert not rm.can_enter("B", creator="d2")[0]
+
+
+def test_exposure_is_net_of_proceeds_banked():
+    rm = RiskManager(RiskConfig(min_seconds_between_entries=0))
+    rm.on_entry("A", 1.0, creator="d1")
+    rm.on_entry("B", 1.0, creator="d2")
+    assert rm.exposure() == pytest.approx(2.0)
+    rm.on_partial_exit("A", 0.6)
+    assert rm.exposure() == pytest.approx(1.4)
+
+
+def test_house_money_residuals_are_still_bounded():
+    rm = RiskManager(RiskConfig(max_open_positions=2, max_tracked_positions=3,
+                                min_seconds_between_entries=0))
+    for i in range(3):
+        rm.on_entry(f"T{i}", 1.0, creator=f"d{i}")
+        rm.on_partial_exit(f"T{i}", 2.0)      # all recovered
+    assert rm.at_risk_positions() == 0
+    ok, why = rm.can_enter("NEW", creator="dz")
+    assert not ok and "tracked" in why

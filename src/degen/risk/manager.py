@@ -38,7 +38,10 @@ class RiskConfig:
     kelly_fraction: float = 0.20         # fraction of full Kelly to use
 
     # --- concurrency and exposure ---
-    max_open_positions: int = 6
+    max_open_positions: int = 6          # positions with capital still at risk
+    # Residuals running on house money still need managing, but they cost
+    # nothing to hold; this only bounds bookkeeping and API load.
+    max_tracked_positions: int = 24
     max_total_exposure_frac: float = 0.30
     max_per_creator: int = 1             # never hold two tokens from one dev
     cooldown_after_loss_s: float = 90.0
@@ -135,11 +138,16 @@ class RiskManager:
             return False, f"halted: {s.halt_reason}"
         if mint in s.open_positions:
             return False, "already holding"
-        if len(s.open_positions) >= c.max_open_positions:
-            return False, f"max open positions ({c.max_open_positions})"
-        exposure = sum(p.get("sol_in", 0.0) for p in s.open_positions.values())
+        # The cap counts positions with capital still at risk. A residual held
+        # on house money is free to keep running.
+        at_risk = self.at_risk_positions()
+        if at_risk >= c.max_open_positions:
+            return False, f"max open positions ({c.max_open_positions} at risk)"
+        if len(s.open_positions) >= c.max_tracked_positions:
+            return False, f"max tracked positions ({c.max_tracked_positions})"
+        exposure = self.exposure()
         if exposure >= c.max_total_exposure_frac * self.bankroll():
-            return False, f"exposure cap ({exposure:.3f} SOL)"
+            return False, f"exposure cap ({exposure:.3f} SOL at risk)"
         if creator and s.creators.get(creator, 0) >= c.max_per_creator:
             return False, f"already holding a token from creator {creator[:8]}"
         t = now()
@@ -152,10 +160,38 @@ class RiskManager:
     # ---------------- lifecycle ----------------
 
     def on_entry(self, mint: str, sol_in: float, creator: str | None = None, meta: dict | None = None) -> None:
-        self.state.open_positions[mint] = {"sol_in": sol_in, "at": now(), "creator": creator, **(meta or {})}
+        self.state.open_positions[mint] = {
+            "sol_in": sol_in, "sol_out": 0.0, "at": now(), "creator": creator, **(meta or {})
+        }
         self.state.last_entry_at = now()
         if creator:
             self.state.creators[creator] = self.state.creators.get(creator, 0) + 1
+
+    def on_partial_exit(self, mint: str, sol_out: float) -> None:
+        """Record proceeds from a ladder rung without closing the position.
+
+        This is what lets the concurrency cap mean what it is supposed to mean.
+        Once a position has returned its cost basis it has no capital at risk,
+        so continuing to hold the residual for the tail should not consume a
+        slot that a new opportunity could use.
+        """
+        pos = self.state.open_positions.get(mint)
+        if pos is not None:
+            pos["sol_out"] = pos.get("sol_out", 0.0) + max(0.0, sol_out)
+
+    def at_risk_positions(self) -> int:
+        """Positions that have not yet returned their cost basis."""
+        return sum(
+            1 for p in self.state.open_positions.values()
+            if p.get("sol_out", 0.0) < p.get("sol_in", 0.0)
+        )
+
+    def exposure(self) -> float:
+        """Capital still at risk, net of proceeds already banked."""
+        return sum(
+            max(0.0, p.get("sol_in", 0.0) - p.get("sol_out", 0.0))
+            for p in self.state.open_positions.values()
+        )
 
     def on_exit(self, mint: str, pnl_sol: float) -> None:
         pos = self.state.open_positions.pop(mint, None)
@@ -222,7 +258,8 @@ class RiskManager:
             "realized_pnl_sol": round(s.realized_pnl_sol, 4),
             "day_pnl_sol": round(s.day_pnl_sol, 4),
             "open_positions": len(s.open_positions),
-            "exposure_sol": round(sum(p.get("sol_in", 0.0) for p in s.open_positions.values()), 4),
+            "at_risk_positions": self.at_risk_positions(),
+            "exposure_sol": round(self.exposure(), 4),
             "consecutive_losses": s.consecutive_losses,
             "halted": s.halted,
             "halt_reason": s.halt_reason,

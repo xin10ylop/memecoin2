@@ -13,9 +13,9 @@ It is built around one finding, measured on its own data rather than assumed:
 > hit rate roughly fourfold.
 
 That is why this is not a sniper. Sniping the mint buys at the base rate, and
-the base rate — from an unbiased census of **924 launches** — is that the median
-new token **never trades above its first print**, 7.5% ever double, and 1.3%
-ever 5x.
+the base rate — from an unbiased census of **3,298 launches** — is that the
+median new token **never trades above its first print**, 7.9% ever double, and
+2.2% ever 5x. Backtested on its own, entering at 30 seconds *loses money*.
 
 Full numbers, methodology and caveats: **[docs/RESEARCH.md](docs/RESEARCH.md)**.
 
@@ -24,13 +24,13 @@ Full numbers, methodology and caveats: **[docs/RESEARCH.md](docs/RESEARCH.md)**.
 ## What it does
 
 ```
-discover  ──▶  track  ──▶  features  ──▶  safety  ──▶  score  ──▶  size  ──▶  execute
-   │             │            │             │            │           │           │
-Jupiter      age-tiered    fixed-age    3-stage      rules +     fractional   paper /
-recent       re-polling    snapshot     reject       LightGBM     Kelly +     dry /
-feed         (20s → 2h)    features     stack        blend        pool cap    live
-                                                                                │
-                                              ladder · trail · time · hard ◀────┘
+discover ─▶ track ─▶ quality ─▶ features ─▶ safety ─▶ gate ─▶ size ─▶ execute
+   │          │         │           │          │         │       │        │
+Jupiter   age-tiered  price/liq  fixed-age  3-stage  4 conditions  Kelly  paper/
+recent    re-polling  coherence  snapshot   reject   no weights   + pool  dry/
+feed      20s → 2h    check      features   stack    no model      cap    live
+                                                                            │
+                        cost recovery · widening trail · dump · stops ◀─────┘
 ```
 
 Every stage is shared between the backtester and the live trader. There is one
@@ -49,6 +49,7 @@ degen baserates                    # the honest outcome distribution
 degen scan --top 15                # current candidates, with reasons
 degen backtest --threshold 0.55    # evaluate on collected data
 degen train                        # fit the model (refuses if underpowered)
+degen validate                     # out-of-sample walk-forward - the number that counts
 degen trade --mode paper           # trade with simulated fills against live prices
 ```
 
@@ -73,7 +74,12 @@ round-trips per token, for free, in one call.
 
 ## The strategy
 
-**Entry.** A token is considered at fixed ages (60s, 120s, 180s, 240s, 300s).
+**Entry.** The default rule is the four-condition traction gate above — the only
+entry rule that held up out of sample. The weighted scorer and the trained model
+are available with `--rule scorer` and score better in-sample, which is exactly
+why they are not the default.
+
+A token is considered at fixed ages (60s, 120s, 180s, 240s, 300s).
 Those ages are measured rather than chosen: backtesting each in isolation gives
 a clean inverted-U peaking at 180 seconds, with sniping at 30s and entering at
 30 minutes both *losing* money. See
@@ -141,36 +147,56 @@ small numbers multiply easily) and observation cadence (which encodes this
 collector's polling schedule rather than the market). Details in
 [docs/RESEARCH.md](docs/RESEARCH.md#7-the-model).
 
-## Honest status: not validated
+## Honest status
 
-**Out of sample, the tuned strategy loses money.** This is the most important
-number in the repository and every other figure should be read against it.
+Two corrections happened on the way here, and both matter more than any headline
+number.
 
-Splitting the census chronologically, fitting the model and the deployer book on
-the earlier 60% and measuring on the later 40%:
+**First, an audit killed the spectacular results.** An early version reported
++279% with a profit factor of 18, led by a 136x trade. That token's price rose
+190-fold while its reported liquidity sat flat at $72,000 — in a
+constant-product pool the two are mechanically linked, so those were broken
+fields, not trades. A price/liquidity consistency guard now drops the 6% of
+mints whose two series contradict each other, and every analysis path runs
+behind it.
 
-| | trades | win rate | ROI | profit factor | P(expectancy > 0) |
-|---|---|---|---|---|---|
-| in-sample | 57 | 70.2% | **+171.2%** | 16.42 | 1.000 |
-| **out-of-sample** | **33** | **36.4%** | **−4.6%** | **0.81** | **0.309** |
+**Second, complexity was destroying the edge.** Measured on clean data with a
+chronological split — fit on the earlier 60% of mints, test on the later 40%,
+no token straddling the boundary:
 
-The in-sample figures are the ones a less careful version of this README would
-have led with. They are the product of choosing thresholds, entry ages, exit
-schedules and features against the same data used to score them, and they do not
-survive contact with data the tuning never saw.
+| entry rule | IS trades | IS ROI | OOS trades | **OOS ROI** | OOS PF | P(exp>0) |
+|---|---|---|---|---|---|---|
+| holders ≥ 20 | 313 | 10.4% | 214 | +9.8% | 1.52 | 0.96 |
+| + liquidity, buy/sell | 248 | 14.1% | 168 | +18.1% | 2.06 | 1.00 |
+| **+ market cap** ← default | 219 | 16.6% | 142 | **+23.1%** | **2.41** | **1.00** |
+| + full safety stack | 114 | 21.2% | 68 | +19.3% | 2.14 | 0.97 |
+| + weighted rule scorer | 82 | 26.9% | 46 | +10.5% | 1.60 | 0.80 |
+| + gradient-boosted model | 64 | 39.2% | 36 | +17.0% | 1.83 | 0.86 |
 
-Two things worth separating:
+The first four rows have in-sample and out-of-sample figures that agree — that
+is what generalisation looks like. The last two do not: the scorer's apparent
+edge more than halves out of sample and both cut the trade count to a third.
+They are fitting the training window, so **they are off by default.**
 
-- **The measurements hold.** The base rates come from an unbiased census of
-  every launch with proper confidence intervals; the signal directions are
-  monotone, mutually consistent, and match independent published work. Sniping
-  the mint really does lose money.
-- **The strategy is not established.** A 33-trade out-of-sample window from one
-  continuous session is not proof of failure either — but it is the best
-  evidence available and it is negative.
+The shipped default is row three: four conditions, no fitted weights, no model.
 
-Run it yourself with `degen validate`, and re-run it as the census grows. That
-command exists because it is the only one whose output means anything. That is
+```
+holders ≥ 20   ·   liquidity ≥ $3,000   ·   buy/sell ≥ 0.55   ·   market cap ≥ $5,000
+```
+
+A modest, real edge — roughly a 2.4 profit factor on 142 held-out trades — not a
+money printer. What it is *not*:
+
+- The thresholds came from univariate analysis of an earlier census, so they are
+  not fully out-of-sample themselves. A sweep of neighbouring values stays
+  profitable, so it is a plateau rather than a spike, but the level above is
+  optimistic by some unmeasured amount.
+- The whole census is hours, not weeks, from a single market regime.
+- No real transaction has been landed, so failed sends and sandwich attacks on
+  entry are unmodelled.
+
+Re-run `degen validate` as the census grows. It is the only command whose output
+means anything. That is
 encouraging and it is **not** evidence of a durable edge:
 
 - The whole census is a few hours of one day, in one market regime. The

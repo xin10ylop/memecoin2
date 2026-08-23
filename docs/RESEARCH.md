@@ -362,7 +362,30 @@ number; the +120.5% ROI is not, and should be read as "the model's ranking is
 useful", not as an expected return. Treating it otherwise is exactly the mistake
 this document keeps warning about.
 
-## 9. Out-of-sample validation, and what it says
+## 9. The audit that invalidated the headline results
+
+The strategy tables above were produced before an audit of the individual
+trades, and that audit changed everything.
+
+The top backtest trade was a 136x. Its token's price rose roughly 190-fold while
+its reported liquidity sat flat at about $72,000 for the entire run. In a
+constant-product pool the two are mechanically linked — pool value is
+2·√(k·P), so a 100x price move must show a ~10x liquidity move — so a price that
+moves while depth does not is a broken field, not a trade. The affected tokens
+were disproportionately ones mimicking real tickers (GOOGL, MSFT, MRNA,
+BITMINE), consistent with a decimals or supply misparse upstream.
+
+`store/quality.py` now checks every consecutive snapshot pair against that
+square-root relationship, drops the 6% of mints whose series contradict
+themselves, and is the single entry point every analysis path uses. The first
+version of the guard tolerated one bad step, which let a 95x artefact through —
+a single unsupported step above 5x is now disqualifying on its own.
+
+The census barely moved (median peak still 1.000x, 7.94% ever 2x), which is the
+reassuring part: the artefacts were distorting the *strategy* results, not the
+base rates. The strategy results moved by roughly an order of magnitude.
+
+## 10. Out-of-sample validation, and what it says
 
 Everything in sections 5 and 8 shares a defect: the thresholds, entry ages, exit
 schedules and feature set were all chosen against the same data used to score
@@ -378,9 +401,27 @@ time reflects only launches the bot could have seen.
 | **out-of-sample, rules only** | **40** | **35.0%** | **−3.3%** | **0.984x** | **0.85** | **0.333** | **−0.042** |
 | **out-of-sample, rules + model** | **33** | **36.4%** | **−4.6%** | **0.953x** | **0.81** | **0.309** | **−0.063** |
 
-**The tuned strategy does not generalise.** Out of sample it loses money, its
-median trade loses money, and the probability its expectancy is positive is
-0.31 — worse than a coin flip.
+**On the contaminated data the tuned strategy did not generalise**: out of
+sample it lost money, and the probability its expectancy was positive was 0.31.
+
+Re-run on clean data, the picture is different and much more useful. Every
+configuration is positive out of sample, and the *simple* ones generalise while
+the elaborate ones do not:
+
+| entry rule | IS trades | IS ROI | OOS trades | OOS ROI | OOS PF | P(exp>0) |
+|---|---|---|---|---|---|---|
+| holders ≥ 20 | 313 | 10.4% | 214 | +9.8% | 1.52 | 0.96 |
+| + liquidity, buy/sell | 248 | 14.1% | 168 | +18.1% | 2.06 | 1.00 |
+| **+ market cap** | 219 | 16.6% | 142 | **+23.1%** | **2.41** | **1.00** |
+| + full safety stack | 114 | 21.2% | 68 | +19.3% | 2.14 | 0.97 |
+| + weighted rule scorer | 82 | 26.9% | 46 | +10.5% | 1.60 | 0.80 |
+| + gradient-boosted model | 64 | 39.2% | 36 | +17.0% | 1.83 | 0.86 |
+
+The first four rows agree in and out of sample. The last two do not — the
+scorer's edge more than halves and both cut the trade count to a third, which is
+what fitting the training window looks like. The shipped default is therefore
+the four-condition gate in row three, with the scorer and model available but
+off.
 
 The exit A/B in section 10 makes the point sharply. Replacing the ladder raised
 in-sample ROI from 113% to 171%, and moved out-of-sample ROI from +6.9% to
@@ -405,7 +446,7 @@ negative. The remedy is not more tuning against the same few hours — that is
 what produced the problem. It is more data: run the collector for weeks and
 re-run `degen validate`.
 
-## 10. What the exit A/B found
+## 11. What the exit A/B found
 
 The exit research argued the ladder destroys the tail, using a piecewise Pareto
 fit to our own census: local exponent 2.74 on [1x, 2x], 1.91 on [2x, 5x], and
@@ -442,7 +483,7 @@ instead of a flat share-of-pool rule.
 **All of the above is in-sample.** Section 9 is what happened when the resulting
 configuration met data it had not been fitted to.
 
-## 11. What these results are not
+## 12. What these results are not
 
 Stated plainly, because the numbers above are the kind that get over-read:
 

@@ -28,6 +28,7 @@ from ..features.build import features_at
 from ..risk.exit import ExitConfig, Position, evaluate
 from ..risk.manager import RiskConfig, RiskManager
 from ..safety.filters import SafetyConfig, check_local, check_rugcheck
+from ..signals.gate import GateConfig, TractionGate
 from ..signals.regime import RegimeState, measure as measure_regime
 from ..signals.score import CompositeScorer
 from ..sim.amm import Pool
@@ -53,6 +54,12 @@ class TraderConfig:
     slippage_bps: int = 1200            # thin pools move between quote and land
     sol_usd_refresh_s: float = 120.0
     deep_check: bool = True             # RugCheck before entry
+    # Entry rule. "gate" is the four-condition traction gate, the only rule that
+    # held up out of sample. "scorer" adds the weighted rule model and, if one
+    # is trained, the gradient-boosted model - both of which score better
+    # in-sample and worse out of sample, so they are opt-in.
+    entry_rule: str = "gate"            # gate | scorer
+    gate: GateConfig = field(default_factory=GateConfig)
     score_threshold: float = 0.55
     max_watch: int = 800
     regime_refresh_s: float = 900.0     # re-measure the regime every 15 minutes
@@ -77,6 +84,7 @@ class LiveTrader:
     def __init__(self, cfg: TraderConfig | None = None) -> None:
         self.cfg = cfg or TraderConfig()
         self.lake = lake()
+        self.gate = TractionGate(self.cfg.gate)
         self.scorer = CompositeScorer(rule_threshold=self.cfg.score_threshold)
         self.risk = RiskManager(self.cfg.risk)
         self.stop = threading.Event()
@@ -184,39 +192,46 @@ class LiveTrader:
         if not safe.ok:
             return
 
-        s = self.scorer.score(feat)
-        threshold = self.cfg.score_threshold + (self.regime.threshold_delta if self.cfg.use_regime else 0.0)
-        if s.score < threshold:
-            return
+        if self.cfg.entry_rule == "gate":
+            g = self.gate.check(feat)
+            if not g.passed:
+                return
+            conviction, why_signal = g.conviction, g.explain()
+        else:
+            s = self.scorer.score(feat)
+            threshold = self.cfg.score_threshold + (self.regime.threshold_delta if self.cfg.use_regime else 0.0)
+            if s.score < threshold:
+                return
+            conviction, why_signal = s.score, s.explain()
 
         ok, why = self.risk.can_enter(mint, creator=feat.get("dev"))
         if not ok:
-            self._event("reject", mint=mint, stage="risk", why=why, score=s.score)
+            self._event("reject", mint=mint, stage="risk", why=why, score=conviction)
             return
 
         if self.cfg.deep_check:
             deep = check_rugcheck(mint, self.cfg.safety)
             if not deep.ok:
-                self._event("reject", mint=mint, stage="rugcheck", why=deep.rejects[:3], score=s.score)
+                self._event("reject", mint=mint, stage="rugcheck", why=deep.rejects[:3], score=conviction)
                 log.info("skip %-12s rugcheck: %s", str(last.get("symbol"))[:12], deep.rejects[:2])
                 return
 
         pool = self._pool(last)
-        size, why_size = self.risk.size_for(s.score, pool_sol_reserve=pool.sol_reserve if pool else None)
+        size, why_size = self.risk.size_for(conviction, pool_sol_reserve=pool.sol_reserve if pool else None)
         if self.cfg.use_regime and size > 0:
             size = round(size * self.regime.size_mult, 4)
             if size < self.cfg.risk.min_size_sol:
                 self._event("reject", mint=mint, stage="regime_sizing",
-                            why=f"{self.regime.band} regime scaled size below minimum", score=s.score)
+                            why=f"{self.regime.band} regime scaled size below minimum", score=conviction)
                 return
         if size <= 0:
-            self._event("reject", mint=mint, stage="sizing", why=why_size, score=s.score)
+            self._event("reject", mint=mint, stage="sizing", why=why_size, score=conviction)
             return
 
         res = self.broker.buy(mint, size, self.cfg.slippage_bps, self._ctx(last))
         if not res.ok:
             self.risk.on_fill_failure()
-            self._event("buy_failed", mint=mint, why=res.reason, size=size, score=s.score)
+            self._event("buy_failed", mint=mint, why=res.reason, size=size, score=conviction)
             log.warning("buy failed %s: %s", str(last.get("symbol"))[:12], res.reason)
             return
         self.risk.on_fill_success()
@@ -232,13 +247,13 @@ class LiveTrader:
             decimals=int(last.get("decimals") or 6), symbol=last.get("symbol"), creator=feat.get("dev"),
         )
         self.risk.on_entry(mint, abs(res.sol_delta), creator=feat.get("dev"),
-                           meta={"symbol": last.get("symbol"), "score": s.score})
+                           meta={"symbol": last.get("symbol"), "score": conviction})
         self.n_entries += 1
-        log.info("BUY  %-12s %.4f SOL @ %.3e | score=%.3f liq=$%s holders=%s",
-                 str(last.get("symbol"))[:12], abs(res.sol_delta), entry_px_sol, s.score,
-                 f"{last.get('liquidity') or 0:,.0f}", last.get("holder_count"))
+        log.info("BUY  %-12s %.4f SOL @ %.3e | %s",
+                 str(last.get("symbol"))[:12], abs(res.sol_delta), entry_px_sol, why_signal[:96])
         self._event("buy", mint=mint, symbol=last.get("symbol"), size_sol=abs(res.sol_delta),
-                    price=entry_px_sol, score=s.score, terms=s.terms, sig=res.signature,
+                    price=entry_px_sol, score=conviction, rule=self.cfg.entry_rule,
+                    why=why_signal, sig=res.signature,
                     liquidity=last.get("liquidity"), holders=last.get("holder_count"))
 
     # ---------------- management ----------------

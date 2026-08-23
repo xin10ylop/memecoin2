@@ -35,9 +35,13 @@ def outcomes(df):
     o = o[(o.n>=4)&(o.p0>0)]; o["maxx"]=o.pmax/o.p0; o=o[o.maxx<200]
     o["success"]=(o.maxx>=2.0)|(o.liqmax>=10000); return o
 
+import gc
+gc.collect()
 book = DeployerBook(path="data/deployers_cx.json"); book.devs.clear()
 book.build(outcomes(tr).to_dict("records")); set_deployer_book(book)
-res = train(build_panel(tr, horizon_s=1800), TrainConfig(target_x=1.5), out_dir="models_cx")
+_panel = build_panel(tr, horizon_s=1800)
+res = train(_panel, TrainConfig(target_x=1.5), out_dir="models_cx")
+del _panel; gc.collect()
 print(f"model on train: lift={res.mean_lift:.2f} precision={res.mean_top_precision:.3f}\n")
 
 saf_default = SafetyConfig()
@@ -98,7 +102,7 @@ for name, sig in [
         out[f"{tag}_ROI%"] = round(100*s["roi"],1)
         out[f"{tag}_PF"] = round(s["profit_factor"],2)
         out[f"{tag}_P>0"] = round(s["prob_expectancy_positive"],2)
-    rows.append(out); print("  done", name, flush=True)
+    rows.append(out); print("  done", name, out, flush=True); gc.collect()
 print()
 print(pd.DataFrame(rows).to_string(index=False))
 set_deployer_book(None)

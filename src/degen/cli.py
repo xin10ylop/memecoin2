@@ -157,8 +157,10 @@ def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 @app.command()
-def backtest(threshold: float = 0.55, size: float = 0.5, safety: bool = True, venue: str = "pumpfun") -> None:
-    """Backtest the current strategy on collected snapshots."""
+def backtest(rule: str = "gate", threshold: float = 0.55, size: float = 0.5,
+             safety: bool = True, venue: str = "pumpfun") -> None:
+    """Backtest on collected snapshots. `rule` is "gate" (default, validated out
+    of sample) or "scorer" (better in-sample, worse out of sample)."""
     setup()
     import numpy as np
 
@@ -174,13 +176,24 @@ def backtest(threshold: float = 0.55, size: float = 0.5, safety: bool = True, ve
     if snaps.empty:
         print("no data")
         raise typer.Exit(1)
-    sc, saf = CompositeScorer(rule_threshold=threshold), SafetyConfig()
+    from .signals.gate import TractionGate
 
-    def sig(f):
-        if safety and not check_local(f, saf).ok:
-            return None
-        r = sc.score(f)
-        return float(np.clip(r.score, 0.3, 1.0)) if r.score >= threshold else None
+    saf = SafetyConfig()
+    if rule == "gate":
+        gate = TractionGate()
+
+        def sig(f):
+            if safety and not check_local(f, saf).ok:
+                return None
+            return gate.signal(f)
+    else:
+        sc = CompositeScorer(rule_threshold=threshold)
+
+        def sig(f):
+            if safety and not check_local(f, saf).ok:
+                return None
+            r = sc.score(f)
+            return float(np.clip(r.score, 0.3, 1.0)) if r.score >= threshold else None
 
     t, s = run(snaps, sig, BacktestConfig(base_size_sol=size, costs=CostModel(venue=venue)))
     print(json.dumps(s, indent=2, default=str))
@@ -235,6 +248,7 @@ def validate(train_frac: float = 0.60, horizon: int = 1800) -> None:
 def trade(
     mode: str = typer.Option("paper", help="paper | dry | live"),
     bankroll: float = 5.0,
+    rule: str = typer.Option("gate", help="gate (validated) | scorer (opt-in)"),
     threshold: float = 0.55,
     i_understand_the_risk: bool = typer.Option(False, help="required for --mode live"),
 ) -> None:
@@ -246,7 +260,8 @@ def trade(
     if mode == "live" and not i_understand_the_risk:
         print("live mode requires --i-understand-the-risk and DEGEN_WALLET_KEY.")
         raise typer.Exit(2)
-    cfg = TraderConfig(mode=mode, score_threshold=threshold, risk=RiskConfig(bankroll_sol=bankroll))
+    cfg = TraderConfig(mode=mode, entry_rule=rule, score_threshold=threshold,
+                       risk=RiskConfig(bankroll_sol=bankroll))
     LiveTrader(cfg).run()
 
 

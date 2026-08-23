@@ -105,7 +105,30 @@ def clean_snapshots(snaps: pd.DataFrame, report: bool = False) -> pd.DataFrame:
     return snaps[snaps.mint.isin(set(keep))]
 
 
-def load_clean(dataset: str = "snapshots", report: bool = False):
+# Columns the feature builder and backtester actually read. The raw snapshot
+# frame carries ~143 columns; holding all of them through a groupby made the
+# analysis scripts run out of memory and be killed silently.
+NEEDED_COLS = (
+    "mint", "symbol", "dev", "launchpad", "token_program", "tags",
+    "observed_at", "created_at", "age_s", "decimals",
+    "price_usd", "liquidity", "mcap", "fdv", "holder_count",
+    "top_holders_pct", "dev_balance_pct", "dev_mints", "dev_migrations",
+    "organic_score", "mint_auth_disabled", "freeze_auth_disabled",
+    "has_socials", "telegram", "twitter", "website",
+    "s5m_numBuys", "s5m_numSells", "s5m_numTraders", "s5m_numNetBuyers",
+    "s5m_buyVolume", "s5m_sellVolume", "s5m_priceChange", "s5m_liquidityChange",
+    "s1h_numBuys", "s1h_numSells", "s1h_numTraders", "s1h_numNetBuyers",
+    "s1h_buyVolume", "s1h_sellVolume", "s1h_priceChange",
+)
+
+
+def trim(df, extra: tuple[str, ...] = ()):
+    """Keep only the columns downstream code reads."""
+    want = [c for c in (*NEEDED_COLS, *extra) if c in df.columns]
+    return df[want] if want else df
+
+
+def load_clean(dataset: str = "snapshots", report: bool = False, lean: bool = True):
     """The standard way to load the panel: usable rows only, artefacts removed.
 
     Every analysis path should go through this rather than reading the lake
@@ -119,4 +142,6 @@ def load_clean(dataset: str = "snapshots", report: bool = False):
     df = df[df["price_usd"].notna() & (df["price_usd"] > 0)]
     if "age_s" in df.columns:
         df = df[df["age_s"].notna()]
+    if lean:
+        df = trim(df)
     return clean_snapshots(df, report=report)

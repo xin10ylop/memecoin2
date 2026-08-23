@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -50,6 +51,76 @@ def status() -> None:
             print(t.to_string(index=False))
     except Exception:
         pass
+
+
+@app.command()
+def doctor() -> None:
+    """Check that this machine can actually collect and trade.
+
+    Written for a fresh server: it verifies each external dependency the bot
+    needs and says which of them are optional, so a red line is unambiguous
+    rather than something to squint at.
+    """
+    setup("WARNING")
+    import time
+
+    from .sources import dexscreener, jupiter
+    from .sources.rugcheck import summary as rug_summary
+    from .sources.solana_rpc import RPC_URL, get_slot
+    from .store.lake import lake
+
+    ok = True
+
+    def check(name: str, fn, required: bool = True, detail: str = "") -> None:
+        nonlocal ok
+        t0 = time.time()
+        try:
+            res = fn()
+            good = bool(res)
+        except Exception as exc:
+            res, good = f"{type(exc).__name__}: {exc}", False
+        ms = (time.time() - t0) * 1000
+        if good:
+            mark = "\033[32m  ok \033[0m"
+        elif required:
+            mark, ok = "\033[31mFAIL \033[0m", False
+        else:
+            mark = "\033[33mwarn \033[0m"
+        extra = detail or (str(res)[:52] if good else str(res)[:52])
+        print(f"  [{mark}] {name:<26} {ms:>6.0f}ms  {extra}")
+
+    print("\ndata sources (all free, no key needed)")
+    check("Jupiter recent tokens", lambda: len(jupiter.recent()) > 0)
+    check("Jupiter batch lookup", lambda: len(jupiter.search([jupiter.SOL_MINT])) > 0)
+    check("Jupiter quote", lambda: jupiter.quote(jupiter.SOL_MINT, jupiter.USDC_MINT, 10**8) is not None)
+    check("DexScreener", lambda: len(dexscreener.search("SOL")) > 0)
+    check("RugCheck", lambda: rug_summary(jupiter.USDC_MINT) is not None)
+
+    print("\nchain access")
+    slot = get_slot()
+    check("Solana RPC", lambda: slot is not None, detail=f"slot {slot} via {RPC_URL.split('//')[-1][:34]}")
+    if "mainnet-beta.solana.com" in RPC_URL:
+        print("         \033[33mnote\033[0m  public RPC is fine for collecting, too slow for live trading")
+
+    print("\nlocal state")
+    lk = lake()
+    n_snap = lk.count("snapshots")
+    check("data lake writable", lambda: (lk.dataset_dir("snapshots").exists()), detail=str(lk.root))
+    check("snapshots collected", lambda: True, detail=f"{n_snap:,} rows")
+    model = Path("models/signal_lgbm.txt")
+    check("model artifact", lambda: model.exists(), required=False,
+          detail="present" if model.exists() else "not trained (the gate does not need it)")
+    key = os.getenv("DEGEN_WALLET_KEY", "")
+    check("wallet key", lambda: bool(key), required=False,
+          detail="loaded" if key else "unset (only needed for --mode live)")
+
+    print()
+    if n_snap < 50_000:
+        print(f"  \033[33mThe census is small ({n_snap:,} snapshots). `degen validate` needs weeks of\033[0m")
+        print("  \033[33mcollection before its answer means anything.\033[0m\n")
+    print("  \033[32mall required checks passed\033[0m\n" if ok
+          else "  \033[31msomething required is broken - see FAIL above\033[0m\n")
+    raise typer.Exit(0 if ok else 1)
 
 
 @app.command()

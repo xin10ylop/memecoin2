@@ -1,0 +1,33 @@
+[Unit]
+Description=degen market data collector
+Documentation=https://github.com/xin10ylop/memecoin2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+WorkingDirectory=@INSTALL_DIR@
+EnvironmentFile=-@INSTALL_DIR@/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@INSTALL_DIR@/.venv/bin/degen collect
+
+# The collector is designed to be killed at any moment: its registry is
+# checkpointed every minute and the lake is append-only, so a restart resumes
+# rather than starting over.
+Restart=always
+RestartSec=10
+# Do not give up after repeated restarts; an upstream API outage should not
+# permanently stop collection.
+StartLimitIntervalSec=0
+
+StandardOutput=append:@INSTALL_DIR@/logs/collector.log
+StandardError=append:@INSTALL_DIR@/logs/collector.log
+
+# Light hardening. The process needs outbound network and its own data dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=@INSTALL_DIR@/data @INSTALL_DIR@/logs

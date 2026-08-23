@@ -32,7 +32,7 @@ from ..util.timeutil import now
 log = get("degen.harvest")
 
 
-def build_universe(max_pages: int = 8) -> dict[str, dict[str, Any]]:
+def build_universe(max_pages: int = 8, resolve_mints: bool = True) -> dict[str, dict[str, Any]]:
     """Collect candidate (pool, mint) pairs from every free listing we have."""
     uni: dict[str, dict[str, Any]] = {}
     log.info("building universe: scanning new_pools (%d pages) + trending + toplists", max_pages)
@@ -71,7 +71,11 @@ def build_universe(max_pages: int = 8) -> dict[str, dict[str, Any]]:
             mints.add(b["tokenAddress"])
 
     known = {v["mint"] for v in uni.values() if v.get("mint")}
-    todo = [m for m in mints if m not in known]
+    # Resolving toplist mints to pools costs one GeckoTerminal call each and is
+    # the slowest phase by far; skip it when the listing pools are enough.
+    todo = [m for m in mints if m not in known] if resolve_mints else []
+    if not resolve_mints:
+        log.info("skipping mint resolution (%d candidates)", len(mints) - len(known))
     log.info("universe: %d pools from listings, resolving %d extra mints", len(uni), len(todo))
     for i, m in enumerate(todo):
         for p in gt.pools_for_token(m)[:1]:
@@ -120,8 +124,10 @@ def main() -> None:
     ap.add_argument("--timeframe", default="minute")
     ap.add_argument("--aggregate", type=int, default=1)
     ap.add_argument("--max-pages", type=int, default=6)
+    ap.add_argument("--no-resolve", action="store_true",
+                    help="skip resolving toplist mints to pools (much faster)")
     a = ap.parse_args()
-    uni = build_universe(a.pages)
+    uni = build_universe(a.pages, resolve_mints=not a.no_resolve)
     harvest(uni, a.timeframe, a.aggregate, a.max_pages, a.limit)
 
 

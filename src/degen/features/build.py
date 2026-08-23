@@ -136,6 +136,18 @@ def features_at(hist: pd.DataFrame, age: float) -> dict[str, Any] | None:
     f["traders_over_trades"] = _safe_div(last.get("s5m_numTraders"), buys + sells)
     f["liq_per_holder"] = _safe_div(liq, holders)
 
+    # Volume is the least trustworthy field available: roughly a fifth of
+    # pre-migration pump.fun transaction volume is wash trading, and on an
+    # individual token it can be nearly all of it. Carry both the suspicion
+    # score and a corrected volume so downstream code never has to trust the
+    # raw number.
+    from ..signals.washtrade import assess as _wash_assess
+
+    wash = _wash_assess(f)
+    f.update(wash.as_features())
+    f["vol_corrected"] = (bvol + svol) * wash.discount
+    f["vol_corrected_over_liq"] = _safe_div(f["vol_corrected"], liq)
+
     # Serial-launcher prior. A creator on their 20,000th mint is running a
     # factory; a creator on their first has at least some skin in the game.
     dm = last.get("dev_mints")

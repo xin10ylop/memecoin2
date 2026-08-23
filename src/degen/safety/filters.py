@@ -75,6 +75,15 @@ class SafetyConfig:
     min_liquidity_usd: float = 3_000.0
     max_liquidity_usd: float = 5_000_000.0   # too big to move meaningfully
 
+    # Initial market cap turned out to be the strongest single filter in our own
+    # census and - importantly - it is nearly uncorrelated with liquidity
+    # (r = 0.06), so it is independent evidence rather than a restatement.
+    # Sweep on 1,021 launches: mcap >= 3k gave a 14.7% 2x rate, >= 5k gave
+    # 24.3%, >= 7.5k gave 35.1%, against an 8.7% base. The threshold is set at
+    # 5k rather than the sweep optimum because the optimum is fitted and a
+    # market-cap level is regime-dependent; the scorer grades it continuously.
+    min_mcap_usd: float = 5_000.0
+
     # --- float concentration ---
     # Top holders excluding LP/burn. Above ~40% one wallet can end the token.
     max_top_holders_pct: float = 55.0
@@ -132,6 +141,10 @@ def check_local(feat: dict[str, Any], cfg: SafetyConfig | None = None) -> Safety
         r.reject(f"liquidity {liq} < {cfg.min_liquidity_usd}")
     elif liq > cfg.max_liquidity_usd:
         r.reject(f"liquidity {liq} > {cfg.max_liquidity_usd}")
+
+    mcap = _num(feat.get("mcap"))
+    if mcap is not None and mcap < cfg.min_mcap_usd:
+        r.reject(f"mcap ${mcap:,.0f} < ${cfg.min_mcap_usd:,.0f}")
 
     top = _num(feat.get("top_holders_pct"))
     if top is not None and top > cfg.max_top_holders_pct:

@@ -132,11 +132,26 @@ class JupiterBroker(Broker):
     """
 
     def __init__(self, rpc_url: str | None = None, costs: CostModel | None = None,
-                 dry_run: bool = True, priority_cu_price: int = 500_000) -> None:
+                 dry_run: bool = True, priority_cu_price: int = 500_000,
+                 sender: str = "auto", region: str = "global",
+                 jito_tip_lamports: int = 0) -> None:
+        from .sender import build_sender
+
         self.costs = costs or CostModel()
         self.dry_run = dry_run
         self.priority_cu_price = priority_cu_price
         self.rpc_url = rpc_url or os.getenv("DEGEN_RPC_URL", "https://api.mainnet-beta.solana.com")
+        # Submission path. Helius Sender fans out across Helius/Jito/Harmonic/
+        # Rakurai and is the fastest primitive available, but it demands a tip
+        # in every transaction, so the tip is requested from Jupiter at build
+        # time rather than bolted on afterwards.
+        self.sender = build_sender(sender, region)
+        self.jito_tip_lamports = jito_tip_lamports
+        if getattr(self.sender, "min_tip", 0) and jito_tip_lamports < self.sender.min_tip:
+            self.jito_tip_lamports = self.sender.min_tip
+            log.info("raised Jito tip to sender minimum: %d lamports", self.jito_tip_lamports)
+        if not dry_run:
+            self.sender.warm()
         self._kp = None
         self.pubkey: str | None = None
         key = os.getenv("DEGEN_WALLET_KEY", "").strip()
@@ -188,7 +203,7 @@ class JupiterBroker(Broker):
         if self.dry_run or self._kp is None:
             return True, {"quote": quote, "dry_run": True}
 
-        body = {
+        body: dict[str, Any] = {
             "quoteResponse": quote,
             "userPublicKey": self.pubkey,
             "wrapAndUnwrapSol": True,
@@ -200,6 +215,10 @@ class JupiterBroker(Broker):
                 }
             },
         }
+        if self.jito_tip_lamports:
+            # Jupiter attaches the tip transfer itself, which keeps it inside the
+            # same transaction the sender requires it in.
+            body["prioritizationFeeLamports"] = {"jitoTipLamports": int(self.jito_tip_lamports)}
         resp = post_json(f"{jupiter.BASE}/swap/v1/swap", body, tries=2)
         if not resp or "swapTransaction" not in resp:
             return False, {"reason": "swap build failed", "resp": resp}
@@ -219,18 +238,12 @@ class JupiterBroker(Broker):
     def _send(self, tx_bytes: bytes) -> str | None:
         import base64
 
-        from ..util.http import post_json
-
-        body = {
-            "jsonrpc": "2.0", "id": 1, "method": "sendTransaction",
-            "params": [base64.b64encode(tx_bytes).decode(),
-                       {"encoding": "base64", "skipPreflight": True, "maxRetries": 3}],
-        }
-        d = post_json(self.rpc_url, body, tries=3)
-        if not d or "error" in (d or {}):
-            log.error("sendTransaction failed: %s", (d or {}).get("error"))
+        res = self.sender.send(base64.b64encode(tx_bytes).decode())
+        if not res.ok:
+            log.error("send failed via %s: %s", res.path or self.sender.name, res.reason)
             return None
-        return d.get("result")
+        log.debug("landed via %s", res.path)
+        return res.signature
 
     def buy(self, mint: str, sol_amount: float, slippage_bps: int, ctx: dict) -> OrderResult:
         lamports = int(sol_amount * LAMPORTS)

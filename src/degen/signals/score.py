@@ -15,6 +15,7 @@ The evidence behind the default weights, from an unbiased census of launches
 collected by this system (see docs/RESEARCH.md for the run):
 
     signal                     hit rate vs base rate (1.3x in 1h)
+    initial mcap > $7.5k       35.1%  vs  8.7%   (2x, full window)
     holders > ~8               20.6%  vs  2.4%
     holder count rising        24.0%  vs  1.3%
     liquidity rising           24.6%  vs  3.2%
@@ -64,6 +65,7 @@ def _ramp(v: float | None, lo: float, hi: float) -> float:
 class RuleWeights:
     holders: float = 1.6
     holder_growth: float = 2.0
+    initial_mcap: float = 1.4
     liquidity: float = 1.2
     liquidity_growth: float = 1.8
     buy_pressure: float = 1.5
@@ -119,6 +121,9 @@ class RuleScorer:
         t["holders"] = w.holders * _ramp(holders, 8, 60)
         t["holder_growth"] = w.holder_growth * _ramp(hslope, 0.0, 0.02)
         t["liquidity"] = w.liquidity * _ramp(liq, 3_000, 25_000)
+        # Independent of liquidity in our data (r = 0.06), and the single
+        # strongest gate we found: 8.7% base 2x rate rises to 35% above $7.5k.
+        t["initial_mcap"] = w.initial_mcap * _ramp(_num(f.get("mcap")), 4_000, 20_000)
         t["liquidity_growth"] = w.liquidity_growth * _ramp(lslope, 0.0, 0.005)
         t["buy_pressure"] = w.buy_pressure * _ramp(bsr, 0.52, 0.75)
         t["volume_imbalance"] = w.volume_imbalance * _ramp(imb, 0.0, 0.5)
@@ -147,7 +152,7 @@ class RuleScorer:
         raw = sum(t.values())
         max_pos = (w.holders + w.holder_growth + w.liquidity + w.liquidity_growth +
                    w.buy_pressure + w.volume_imbalance + w.price_momentum +
-                   w.trade_activity + w.organic_retail + w.fresh_dev)
+                   w.trade_activity + w.organic_retail + w.fresh_dev + w.initial_mcap)
         score = max(0.0, min(1.0, raw / max_pos))
         return ScoreResult(score=score, passed=score >= self.threshold, terms=t, notes=notes, source="rules")
 

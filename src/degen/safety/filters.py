@@ -84,6 +84,22 @@ class SafetyConfig:
     # market-cap level is regime-dependent; the scorer grades it continuously.
     min_mcap_usd: float = 5_000.0
 
+    # Market cap divided by pool liquidity, kept as a WARNING rather than a
+    # reject, having been tested as a reject and backed out.
+    #
+    # The motivation was real: tokens with a ratio above 50 show an apparent 15%
+    # 5x rate while having a MEDIAN pool of $43, where a 0.5 SOL exit is 109% of
+    # the entire pool. A naive rule search finds that band and reports a profit
+    # factor near 50 on it, which is a pure artefact.
+    #
+    # But rejecting on the ratio turned out to be the wrong instrument. Those
+    # $43 pools are already excluded by min_liquidity_usd, and measured on a
+    # held-out window the ratio reject removed only 4 trades - all with healthy
+    # liquidity between $9k and $292k, all full size, and collectively
+    # profitable. It was costing real trades to guard against something already
+    # guarded. Set above the observed range so it flags without excluding.
+    max_mcap_liquidity_ratio: float = 200.0
+
     # --- coordinated supply ---
     # Naive top-10 concentration is the wrong quantity, and it is wrong in the
     # direction the adversary optimises for: attributing bundled and co-funded
@@ -155,6 +171,13 @@ def check_local(feat: dict[str, Any], cfg: SafetyConfig | None = None) -> Safety
     mcap = _num(feat.get("mcap"))
     if mcap is not None and mcap < cfg.min_mcap_usd:
         r.reject(f"mcap ${mcap:,.0f} < ${cfg.min_mcap_usd:,.0f}")
+
+    if mcap is not None and liq and liq > 0:
+        ratio = mcap / liq
+        r.detail["mcap_liq_ratio"] = round(ratio, 2)
+        if ratio > cfg.max_mcap_liquidity_ratio:
+            r.warnings.append(
+                f"mcap/liquidity {ratio:.0f}x: ${mcap:,.0f} valuation on a ${liq:,.0f} pool")
 
     top = _num(feat.get("top_holders_pct"))
     if top is not None and top > cfg.max_top_holders_pct:

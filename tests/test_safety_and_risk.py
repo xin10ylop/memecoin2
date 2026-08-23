@@ -235,3 +235,21 @@ def test_missing_supply_does_not_crash_the_cluster_check(monkeypatch):
     _rugcheck_stub(monkeypatch, rep)
     r = check_rugcheck("M")
     assert isinstance(r.ok, bool)
+
+
+def test_the_liquidity_floor_blocks_untradeable_pools():
+    """The pool-dust case that motivated - and then failed to justify - a
+    market-cap-to-liquidity reject. A $190k valuation on a $43 pool looks like a
+    15% 5x rate and is not tradeable at all. The plain liquidity floor already
+    excludes it, which is why the ratio reject was backed out."""
+    dust = {**GOOD, "liquidity": 43.0, "mcap": 190_000.0}
+    r = check_local(dust)
+    assert not r.ok and any("liquidity" in x for x in r.rejects)
+
+
+def test_a_high_ratio_on_a_real_pool_warns_but_does_not_reject():
+    """Measured on held-out data, rejecting on the ratio removed only four
+    trades, all with healthy liquidity and collectively profitable."""
+    r = check_local({**GOOD, "liquidity": 9_000.0, "mcap": 3_000_000.0})
+    assert r.ok
+    assert any("mcap/liquidity" in w for w in r.warnings)

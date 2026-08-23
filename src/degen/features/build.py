@@ -179,6 +179,11 @@ def features_at(hist: pd.DataFrame, age: float) -> dict[str, Any] | None:
     f["holders_per_trade"] = _safe_div(holders, buys + sells)
     f["traders_over_trades"] = _safe_div(last.get("s5m_numTraders"), buys + sells)
     f["liq_per_holder"] = _safe_div(liq, holders)
+    # Valuation relative to the pool backing it. Low is normal; a moderate
+    # excess marks a token being repriced faster than liquidity is arriving,
+    # which is the tradeable version of the signal; an extreme one marks a
+    # paper valuation on a pool too thin to exit.
+    f["mcap_liq_ratio"] = _safe_div(mcap, liq)
 
     # Volume is the least trustworthy field available: roughly a fifth of
     # pre-migration pump.fun transaction volume is wash trading, and on an

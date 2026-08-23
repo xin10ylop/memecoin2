@@ -84,6 +84,16 @@ class SafetyConfig:
     # market-cap level is regime-dependent; the scorer grades it continuously.
     min_mcap_usd: float = 5_000.0
 
+    # --- coordinated supply ---
+    # Naive top-10 concentration is the wrong quantity, and it is wrong in the
+    # direction the adversary optimises for: attributing bundled and co-funded
+    # wallets to single entities raises median top-10 holding by 24 percentage
+    # points on high-risk tokens against 6pp on low-risk ones. Bundled accounts
+    # average 28% of holders and 36% of supply. RugCheck publishes the detected
+    # clusters, so entity-level share is computable rather than guessed.
+    max_clustered_supply_pct: float = 20.0
+    max_insider_clusters: int = 6
+
     # --- float concentration ---
     # Top holders excluding LP/burn. Above ~40% one wallet can end the token.
     max_top_holders_pct: float = 55.0
@@ -286,11 +296,29 @@ def check_rugcheck(mint: str, cfg: SafetyConfig | None = None) -> SafetyResult:
         if top10 > cfg.max_top_holders_pct:
             r.reject(f"retail top-10 {top10:.1f}% > {cfg.max_top_holders_pct}%")
 
+    # Coordinated supply, at entity level rather than address level.
+    supply = ((rep.get("token") or {}).get("supply")) or 0
+    networks = rep.get("insiderNetworks") or []
+    clustered_pct = 0.0
+    if supply and networks:
+        clustered_raw = sum((n or {}).get("tokenAmount", 0) or 0 for n in networks)
+        clustered_pct = 100.0 * clustered_raw / supply
+        if clustered_pct > cfg.max_clustered_supply_pct:
+            r.reject(f"coordinated wallets hold {clustered_pct:.1f}% of supply "
+                     f"across {len(networks)} clusters (limit {cfg.max_clustered_supply_pct}%)")
+        elif clustered_pct > cfg.max_clustered_supply_pct / 2:
+            r.warnings.append(f"coordinated wallets hold {clustered_pct:.1f}% of supply")
+    if len(networks) > cfg.max_insider_clusters:
+        r.reject(f"{len(networks)} distinct coordinated clusters "
+                 f"(limit {cfg.max_insider_clusters})")
+
     insiders = rep.get("graphInsidersDetected") or 0
     if insiders > 0:
         r.warnings.append(f"{insiders} linked insider wallets")
 
     r.detail = {
+        "clustered_supply_pct": round(clustered_pct, 2),
+        "insider_clusters": len(networks),
         "score": score,
         "score_normalised": rep.get("score_normalised"),
         "total_holders": rep.get("totalHolders"),

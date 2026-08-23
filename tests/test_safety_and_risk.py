@@ -180,3 +180,58 @@ def test_house_money_residuals_are_still_bounded():
     assert rm.at_risk_positions() == 0
     ok, why = rm.can_enter("NEW", creator="dz")
     assert not ok and "tracked" in why
+
+
+# ---------------- coordinated supply (entity-level concentration) ----------------
+
+def _rugcheck_stub(monkeypatch, payload):
+    import degen.safety.filters as F
+    monkeypatch.setattr(F, "rugcheck_report", lambda mint: payload)
+
+
+BASE_REPORT = {
+    "rugged": False, "risks": [], "score": 100, "mintAuthority": None, "freezeAuthority": None,
+    "transferFee": {"pct": 0}, "topHolders": [], "markets": [], "knownAccounts": {},
+    "token": {"supply": 1_000_000_000},
+}
+
+
+def test_heavily_bundled_supply_is_rejected(monkeypatch):
+    from degen.safety.filters import check_rugcheck
+    rep = {**BASE_REPORT, "insiderNetworks": [
+        {"size": 8, "tokenAmount": 250_000_000}, {"size": 4, "tokenAmount": 60_000_000}]}
+    _rugcheck_stub(monkeypatch, rep)
+    r = check_rugcheck("M")
+    assert not r.ok and any("coordinated" in x for x in r.rejects)
+    assert r.detail["clustered_supply_pct"] == 31.0
+
+
+def test_modest_clustering_warns_but_passes(monkeypatch):
+    from degen.safety.filters import check_rugcheck
+    _rugcheck_stub(monkeypatch, {**BASE_REPORT,
+                                 "insiderNetworks": [{"size": 3, "tokenAmount": 120_000_000}]})
+    r = check_rugcheck("M")
+    assert r.ok and any("coordinated" in w for w in r.warnings)
+
+
+def test_many_distinct_clusters_are_rejected(monkeypatch):
+    from degen.safety.filters import check_rugcheck
+    nets = [{"size": 2, "tokenAmount": 1_000_000} for _ in range(9)]
+    _rugcheck_stub(monkeypatch, {**BASE_REPORT, "insiderNetworks": nets})
+    r = check_rugcheck("M")
+    assert not r.ok and any("clusters" in x for x in r.rejects)
+
+
+def test_no_clusters_is_clean(monkeypatch):
+    from degen.safety.filters import check_rugcheck
+    _rugcheck_stub(monkeypatch, {**BASE_REPORT, "insiderNetworks": []})
+    r = check_rugcheck("M")
+    assert r.ok and r.detail["clustered_supply_pct"] == 0.0
+
+
+def test_missing_supply_does_not_crash_the_cluster_check(monkeypatch):
+    from degen.safety.filters import check_rugcheck
+    rep = {**BASE_REPORT, "token": None, "insiderNetworks": [{"size": 5, "tokenAmount": 9e17}]}
+    _rugcheck_stub(monkeypatch, rep)
+    r = check_rugcheck("M")
+    assert isinstance(r.ok, bool)

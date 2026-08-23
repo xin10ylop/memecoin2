@@ -141,29 +141,52 @@ small numbers multiply easily) and observation cadence (which encodes this
 collector's polling schedule rather than the market). Details in
 [docs/RESEARCH.md](docs/RESEARCH.md#7-the-model).
 
-## Honest status
+## Honest status: not validated
 
-The strategy backtests at **+72% ROI over 78 trades, 61.5% win rate, profit
-factor 6.6**, and after deleting its three best trades still returns +8.0% per
-trade. The 95% confidence interval on expectancy is **[0.052, 0.640] SOL per
-trade** — positive across the whole interval. That is
+**Out of sample, the tuned strategy loses money.** This is the most important
+number in the repository and every other figure should be read against it.
+
+Splitting the census chronologically, fitting the model and the deployer book on
+the earlier 60% and measuring on the later 40%:
+
+| | trades | win rate | ROI | profit factor | P(expectancy > 0) |
+|---|---|---|---|---|---|
+| in-sample | 57 | 70.2% | **+171.2%** | 16.42 | 1.000 |
+| **out-of-sample** | **33** | **36.4%** | **−4.6%** | **0.81** | **0.309** |
+
+The in-sample figures are the ones a less careful version of this README would
+have led with. They are the product of choosing thresholds, entry ages, exit
+schedules and features against the same data used to score them, and they do not
+survive contact with data the tuning never saw.
+
+Two things worth separating:
+
+- **The measurements hold.** The base rates come from an unbiased census of
+  every launch with proper confidence intervals; the signal directions are
+  monotone, mutually consistent, and match independent published work. Sniping
+  the mint really does lose money.
+- **The strategy is not established.** A 33-trade out-of-sample window from one
+  continuous session is not proof of failure either — but it is the best
+  evidence available and it is negative.
+
+Run it yourself with `degen validate`, and re-run it as the census grows. That
+command exists because it is the only one whose output means anything. That is
 encouraging and it is **not** evidence of a durable edge:
 
-- 78 trades from a few hours of one day, in one market regime.
+- The whole census is a few hours of one day, in one market regime. The
+  out-of-sample window inside it is 33 trades.
 - **Nobody has published a profitable memecoin selection strategy.** The best
   published result — a model-guided selection at 76% precision — still loses
-  26.64% on average. A repository claiming better deserves proportionate
-  scepticism, including from its author.
-- The 95% CI on expectancy per trade is **[0.002, 0.694] SOL** — the lower bound
-  is barely above zero.
-- Several rule variants were tried against the same data and the best reported;
-  the correction for that is out-of-sample validation, which has not happened.
+  26.64% on average. This repository has not beaten that out of sample either.
 - No real transaction has been landed, so failed sends and sandwich attacks on
   entry are unmodelled.
+- The fix is not more tuning. It is more data: run the collector for weeks on an
+  always-on host, then re-run `degen validate`.
 
 What to do about it is in [docs/RUNBOOK.md](docs/RUNBOOK.md): run the collector
-continuously for weeks, retrain, then paper trade for a month before risking
-anything you would miss.
+continuously for weeks, re-run `degen validate`, and only consider live trading
+if the out-of-sample column stops being negative. Paper trade for a month after
+that.
 
 ## Layout
 

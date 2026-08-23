@@ -34,8 +34,16 @@ class RiskConfig:
     base_frac: float = 0.02              # 2% of bankroll at conviction 1.0
     min_size_sol: float = 0.05
     max_size_sol: float = 0.5
-    max_frac_of_pool: float = 0.02       # never exceed 2% of pool depth
-    kelly_fraction: float = 0.20         # fraction of full Kelly to use
+    # Position cap expressed as the slippage it causes, not as a share of the
+    # pool. For constant product the exact one-way relationship is
+    # P_max = quote_reserve * s / (1 - s), verified against our own AMM code to
+    # three decimals, so a slippage target converts to a size directly.
+    max_entry_slippage: float = 0.012
+    max_frac_of_pool: float = 0.02       # belt-and-braces ceiling
+    # Model error, not sampling error, is what justifies shrinking Kelly here:
+    # our P(>=50x) rests on 2 events in 924 launches, a Poisson 95% interval of
+    # [0.24, 7.22] - a 30x range in the rate that dominates expected value.
+    kelly_fraction: float = 0.125
 
     # --- concurrency and exposure ---
     max_open_positions: int = 6          # positions with capital still at risk
@@ -118,9 +126,11 @@ class RiskManager:
         size = bankroll * frac
         size = min(size, c.max_size_sol)
         if pool_sol_reserve:
-            cap = pool_sol_reserve * c.max_frac_of_pool
+            s_target = c.max_entry_slippage
+            slip_cap = pool_sol_reserve * s_target / (1.0 - s_target)
+            cap = min(slip_cap, pool_sol_reserve * c.max_frac_of_pool)
             if cap < size:
-                why += f" | pool cap {cap:.3f}"
+                why += f" | pool cap {cap:.4f} SOL ({100*s_target:.1f}% slippage)"
             size = min(size, cap)
         if size < c.min_size_sol:
             return 0.0, why + f" | below min size ({size:.4f} < {c.min_size_sol})"

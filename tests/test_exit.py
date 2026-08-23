@@ -160,3 +160,27 @@ def test_record_false_still_returns_a_decision():
     pos = _pos()
     d = evaluate(pos, 0.4, 20_000.0, 60, cfg, record=False)
     assert d is not None and d.reason == "hard_stop"
+
+
+def test_the_trail_widens_as_the_run_extends():
+    """Realised volatility rises with the multiple, so the width that survives a
+    run's own noise must widen. An earlier version tightened it, which cut the
+    tail that supplies the entire edge."""
+    cfg = ExitConfig()
+    widths = [w for _, w in cfg.trail_schedule]
+    assert widths == sorted(widths), "trail must widen, not tighten, as the peak rises"
+
+
+def test_only_one_ladder_rung_by_default():
+    """Above ~2x the census's local Pareto exponent falls below 1, so selling
+    the marginal unit is value-destroying. Only the cost-recovery rung remains."""
+    cfg = ExitConfig()
+    assert len(cfg.ladder) == 1
+    assert cfg.ladder[0][0] < 2.0
+
+
+def test_cost_recovery_still_fires_and_the_rest_rides():
+    sells, pos = _drive([1.0, 1.7, 2.5, 4.0, 9.0])
+    assert sells[0][2] == "cost_recovery"
+    # No further ladder sells; whatever exits later does so via the trail.
+    assert sum(1 for _, _, r in sells if r in ("ladder", "cost_recovery")) == 1

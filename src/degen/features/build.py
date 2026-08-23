@@ -107,13 +107,22 @@ def _slope(times: Sequence[float], values: Sequence[float]) -> float:
 def features_at(hist: pd.DataFrame, age: float) -> dict[str, Any] | None:
     """Build one feature row from a token's snapshots, using only age <= `age`.
 
-    `hist` must be that single token's snapshots sorted by observed_at and must
-    carry an `age_s` column. Returns None when there is nothing usable yet.
+    `hist` must be that single token's snapshots **sorted ascending by age_s**.
+    Returns None when there is nothing usable yet.
+
+    The cut is a positional slice rather than a boolean mask. On an ~90-column
+    frame a boolean mask copies every column, and with Arrow-backed dtypes it
+    calls Arrow's `take` across all of them - profiling showed this single line
+    dominating the runtime of the whole backtest. Since the input is sorted,
+    searchsorted plus `.iloc` is exactly equivalent and vastly cheaper.
     """
-    h = hist[hist["age_s"].notna() & (hist["age_s"] <= age)]
+    ages_arr = hist["age_s"].to_numpy(dtype="float64", na_value=np.nan)
+    cut = int(np.searchsorted(ages_arr, age, side="right"))
+    if cut <= 0:
+        return None
+    h = hist.iloc[:cut]
     if h.empty:
         return None
-    h = h.sort_values("age_s")
     last = h.iloc[-1]
     if not last.get("price_usd") or float(last["price_usd"]) <= 0:
         return None
@@ -258,8 +267,13 @@ def label_forward(
     entry_price: float,
 ) -> dict[str, Any]:
     """Outcome over (age, age + horizon]. Strictly after the decision point."""
-    fut = hist[(hist["age_s"] > age) & (hist["age_s"] <= age + horizon_s)]
-    fut = fut[fut["price_usd"].notna() & (fut["price_usd"] > 0)]
+    ages_arr = hist["age_s"].to_numpy(dtype="float64", na_value=np.nan)
+    lo = int(np.searchsorted(ages_arr, age, side="right"))
+    hi = int(np.searchsorted(ages_arr, age + horizon_s, side="right"))
+    fut = hist.iloc[lo:hi]
+    if len(fut):
+        px_ok = fut["price_usd"].to_numpy(dtype="float64", na_value=np.nan)
+        fut = fut.iloc[np.flatnonzero(np.isfinite(px_ok) & (px_ok > 0))]
     out: dict[str, Any] = {
         "horizon_s": horizon_s,
         "n_future_obs": int(len(fut)),

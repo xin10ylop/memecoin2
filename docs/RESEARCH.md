@@ -362,7 +362,87 @@ number; the +120.5% ROI is not, and should be read as "the model's ranking is
 useful", not as an expected return. Treating it otherwise is exactly the mistake
 this document keeps warning about.
 
-## 9. What these results are not
+## 9. Out-of-sample validation, and what it says
+
+Everything in sections 5 and 8 shares a defect: the thresholds, entry ages, exit
+schedules and feature set were all chosen against the same data used to score
+them. The correction is a chronological split — fit on the earlier part, measure
+on the later part, with each mint assigned wholly to one side and the deployer
+book rebuilt from the training window alone so a creator's reputation at test
+time reflects only launches the bot could have seen.
+
+| | trades | win rate | ROI | expectancy | PF | P(exp > 0) | mean/trade ex-top-3 |
+|---|---|---|---|---|---|---|---|
+| in-sample, rules only | 74 | 64.9% | +113.4% | 2.223x | 8.38 | 1.000 | +0.061 |
+| in-sample, rules + model | 57 | 70.2% | +171.2% | 2.639x | 16.42 | 1.000 | +0.124 |
+| **out-of-sample, rules only** | **40** | **35.0%** | **−3.3%** | **0.984x** | **0.85** | **0.333** | **−0.042** |
+| **out-of-sample, rules + model** | **33** | **36.4%** | **−4.6%** | **0.953x** | **0.81** | **0.309** | **−0.063** |
+
+**The tuned strategy does not generalise.** Out of sample it loses money, its
+median trade loses money, and the probability its expectancy is positive is
+0.31 — worse than a coin flip.
+
+The exit A/B in section 10 makes the point sharply. Replacing the ladder raised
+in-sample ROI from 113% to 171%, and moved out-of-sample ROI from +6.9% to
+−3.3%. An "improvement" that only exists in-sample and reverses out of sample is
+the textbook signature of fitting noise, and it happened here despite the change
+also having a theoretical justification.
+
+What survives this and what does not:
+
+- **The base rates survive.** They come from an unbiased census with proper
+  confidence intervals and no tuning, and they replicate independent published
+  work.
+- **The signal directions probably survive.** They are monotone, mutually
+  consistent, and each says the same thing about participation arriving.
+- **Sniping the mint really does lose money**, in-sample and out.
+- **The profitability of the tuned strategy does not survive.** It is not
+  established, and the honest summary is "not yet demonstrated", not "works".
+
+The out-of-sample window is 33 trades from one continuous session, so this is
+not proof of failure either. It is the best evidence available and it is
+negative. The remedy is not more tuning against the same few hours — that is
+what produced the problem. It is more data: run the collector for weeks and
+re-run `degen validate`.
+
+## 10. What the exit A/B found
+
+The exit research argued the ladder destroys the tail, using a piecewise Pareto
+fit to our own census: local exponent 2.74 on [1x, 2x], 1.91 on [2x, 5x], and
+**0.772 on [5x, 50x]**. An exponent below 1 means the conditional expectation
+diverges, so above roughly 2x the expected remaining upside exceeds the current
+value and every further rung sells something worth more than the proceeds. It
+also argued the trailing stop was the highest-leverage parameter, that ours was
+about twice too wide, and that it was scaled backwards — tightening as the
+multiple rose when realised volatility rises.
+
+Tested on the census:
+
+| exit policy | trades | win% | ROI | PF | best | median | ex-top-3 |
+|---|---|---|---|---|---|---|---|
+| ladder + wide tightening trail (old) | 88 | 59.1% | +69.8% | 5.82 | 34.9x | 1.150 | +0.087 |
+| same ladder, narrower trail | 88 | 61.4% | +70.9% | 6.06 | 34.9x | 1.165 | +0.091 |
+| sell only to 2x, widening trail | 88 | 62.5% | +88.8% | 7.44 | 50.2x | 1.171 | +0.087 |
+| **one rung + tight widening trail** | **88** | **59.1%** | **+112.9%** | **8.66** | **67.8x** | **1.152** | **+0.089** |
+| pure trail, no ladder | 88 | 47.7% | +129.4% | 6.09 | 90.0x | 0.975 | +0.036 |
+
+The highest-ROI row is deliberately not chosen: its median trade loses and its
+mean-per-trade excluding the three best collapses, so nearly all of it rides on
+the tail. The chosen row keeps one cost-recovery rung, which holds the median
+above water.
+
+Two claims from the same research were checked directly against our AMM code and
+both hold exactly: slicing a constant-product sell into N pieces yields
+identical proceeds (16.666666667 SOL for N=1 and N=100 at zero fee, and slightly
+*worse* with fees), so TWAP-ing an exit buys nothing; and the exact size cap for
+a target one-way slippage is `P_max = quote_reserve · s/(1−s)`, which reproduces
+1.010% actual slippage for a 1% target. Position sizing now uses that formula
+instead of a flat share-of-pool rule.
+
+**All of the above is in-sample.** Section 9 is what happened when the resulting
+configuration met data it had not been fitted to.
+
+## 11. What these results are not
 
 Stated plainly, because the numbers above are the kind that get over-read:
 

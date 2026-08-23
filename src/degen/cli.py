@@ -216,6 +216,22 @@ def train(target: float = 1.5, horizon: int = 3600) -> None:
 
 
 @app.command()
+def validate(train_frac: float = 0.60, horizon: int = 1800) -> None:
+    """Out-of-sample walk-forward test. The only number that means anything.
+
+    Splits the census chronologically, fits the model and the deployer book on
+    the earlier part only, and measures on the later part. Everything else this
+    tool reports is in-sample and will flatter the strategy.
+    """
+    setup()
+    import subprocess
+    import sys as _sys
+
+    print("running walk-forward validation (this takes a few minutes)...\n")
+    subprocess.run([_sys.executable, "scripts/walk_forward.py"], check=False)
+
+
+@app.command()
 def trade(
     mode: str = typer.Option("paper", help="paper | dry | live"),
     bankroll: float = 5.0,

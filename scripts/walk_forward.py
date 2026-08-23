@@ -27,8 +27,8 @@ from degen.store.lake import lake
 from degen.util.log import setup
 
 setup("WARNING")
-snaps = lake().df("snapshots")
-snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0) & snaps.age_s.notna()]
+from degen.store.quality import load_clean
+snaps = load_clean(report=True)
 # Split by chronological rank of mints rather than by wall-clock. The collector
 # runs in a container that suspends when the session idles, so elapsed time is
 # not proportional to data collected - a time split put 9% of mints on one side.

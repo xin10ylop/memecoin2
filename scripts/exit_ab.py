@@ -21,8 +21,8 @@ from degen.util.log import setup
 
 setup("WARNING")
 pd.set_option("display.width", 230)
-snaps = lake().df("snapshots")
-snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0) & snaps.age_s.notna()]
+from degen.store.quality import load_clean
+snaps = load_clean(report=True)
 sc = CompositeScorer(rule_threshold=0.55); saf = SafetyConfig()
 def sig(f):
     if not check_local(f, saf).ok: return None

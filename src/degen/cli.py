@@ -61,11 +61,12 @@ def scan(top: int = 15, age: int = 300, deep: bool = False) -> None:
     from .signals.score import CompositeScorer
     from .store.lake import lake
 
-    snaps = lake().df("snapshots")
+    from .store.quality import load_clean
+
+    snaps = load_clean()
     if snaps.empty:
-        print("no snapshots yet - run `degen collect` first")
+        print("no usable snapshots yet - run `degen collect` first")
         raise typer.Exit(1)
-    snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0)]
     sc, cfg = CompositeScorer(), SafetyConfig()
     out = []
     for mint, h in snaps.groupby("mint"):
@@ -113,28 +114,25 @@ def baserates(min_age: int = 180, min_obs: int = 5) -> None:
     setup()
     import numpy as np
 
-    from .store.lake import lake
+    from .store.quality import load_clean
 
-    con = lake().con()
-    d = con.execute("""
-        with f as (
-          select mint, price_usd p0, observed_at t0, age_s a0 from (
-            select *, row_number() over (partition by mint order by observed_at) rn
-            from snapshots where price_usd > 0) where rn = 1)
-        select f.mint, f.a0, max(s.price_usd)/f.p0 maxx, max(s.liquidity) liqmax,
-               max(s.holder_count) hmax, count(*) n
-        from snapshots s join f on s.mint = f.mint
-        where s.price_usd > 0 group by f.mint, f.p0, f.a0
-    """).df()
-    d = d[(d.a0 < min_age) & (d.n >= min_obs)]
-    # A first print that is essentially zero produces a meaningless multiple and
-    # a mean in the millions. Drop those rather than reporting a fantasy.
-    d = d[d.maxx.notna() & np.isfinite(d.maxx) & (d.maxx < 1e5)]
+    snaps = load_clean(report=True)
+    if snaps.empty:
+        print("not enough data yet")
+        raise typer.Exit(1)
+    snaps = snaps.sort_values("observed_at")
+    g = snaps.groupby("mint", sort=False)
+    d = g.agg(a0=("age_s", "first"), p0=("price_usd", "first"), pmax=("price_usd", "max"),
+              liqmax=("liquidity", "max"), hmax=("holder_count", "max"),
+              n=("price_usd", "size")).reset_index()
+    d = d[(d.a0 < min_age) & (d.n >= min_obs) & (d.p0 > 0)]
+    d["maxx"] = d.pmax / d.p0
+    d = d[np.isfinite(d.maxx) & (d.maxx < 1e5)]
     if d.empty:
         print("not enough data yet")
         raise typer.Exit(1)
     n = len(d)
-    print(f"census of {n} launches caught <{min_age}s old with >={min_obs} observations\n")
+    print(f"\ncensus of {n} launches caught <{min_age}s old with >={min_obs} observations\n")
     for m in (1.3, 1.5, 2, 3, 5, 10, 20, 50):
         k = int((d.maxx >= m).sum())
         lo, hi = _wilson(k, n)
@@ -170,8 +168,9 @@ def backtest(threshold: float = 0.55, size: float = 0.5, safety: bool = True, ve
     from .sim.costs import CostModel
     from .store.lake import lake
 
-    snaps = lake().df("snapshots")
-    snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0) & snaps.age_s.notna()]
+    from .store.quality import load_clean
+
+    snaps = load_clean(report=True)
     if snaps.empty:
         print("no data")
         raise typer.Exit(1)
@@ -201,8 +200,9 @@ def train(target: float = 1.5, horizon: int = 3600) -> None:
     from .model.train import TrainConfig, train as do
     from .store.lake import lake
 
-    snaps = lake().df("snapshots")
-    snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0)]
+    from .store.quality import load_clean
+
+    snaps = load_clean(report=True)
     panel = build_panel(snaps, horizon_s=horizon)
     print(f"panel: {len(panel)} rows from {snaps.mint.nunique()} mints")
     r = do(panel, TrainConfig(target_x=target))

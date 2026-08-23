@@ -40,28 +40,38 @@ refusing.
 
 ## 2. Validate before trusting
 
-```bash
-degen backtest --threshold 0.55
-```
-
-Read the *robustness* block, not the ROI. If deleting the top three trades
-turns the result negative, you have one lucky token, not a strategy. Do not
-proceed on a result that fails that test.
-
-Then:
+One command matters:
 
 ```bash
-degen train
+degen validate
 ```
 
-It will refuse if the data cannot support a model. That refusal is a feature.
-The rule scorer stays in charge until the data earns the model, and a model
-fitted on 26 positive examples is a memorised list, not a model.
+It splits the census chronologically, fits everything fittable on the earlier
+part, and measures on the later part. Read the **out-of-sample** column and
+ignore the in-sample one entirely — the in-sample column is what a strategy
+looks like when it has been tuned against the data you are scoring it on, and
+it will always look better.
+
+What good looks like: out-of-sample ROI and in-sample ROI in the same
+neighbourhood. What overfitting looks like: in-sample far higher, and the trade
+count collapsing. When this repository last ran it, the four-condition gate gave
+16.6% in-sample against 23.1% out-of-sample — agreement — while adding the
+weighted scorer gave 26.9% against 10.5%, which is the shape to be suspicious
+of.
+
+`degen backtest` is in-sample by construction. Read its *robustness* block
+rather than its ROI: if deleting the three best trades turns the result
+negative, you have a lucky token, not a strategy.
+
+`degen train` refuses when the data cannot support a model, and that refusal is
+a feature. Even when it succeeds, the model is not the default — see the table
+in the README for why.
 
 ## 3. Paper trade
 
 ```bash
-degen trade --mode paper --bankroll 5
+degen trade --mode paper --bankroll 5          # four-condition gate (default)
+degen trade --mode paper --rule scorer         # opt into the weighted scorer + model
 ```
 
 Fills are simulated against live pool state using the same AMM maths as the
@@ -134,13 +144,19 @@ In rough order of likelihood:
    is itself uncertain.
 2. **Turning off the safety filter because it rejected a token that went up.**
    It will do this constantly. It is priced in.
-3. **Removing the time stop.** It closes trades that "might still work". Most of
+3. **Switching to `--rule scorer` because its backtest looks better.** It does
+   look better, in-sample, which is exactly the problem. Check `degen validate`
+   before believing any configuration change.
+4. **Removing the time stop.** It closes trades that "might still work". Most of
    them do not, and the capital is worth more elsewhere.
-4. **Running live with the public RPC.** Missed fills are invisible losses.
-5. **Reusing a main wallet.** One compromised key ends everything, not just this.
-6. **Trading a regime the model never saw.** Memecoin activity is strongly
+5. **Running live with the public RPC.** Missed fills are invisible losses.
+6. **Reusing a main wallet.** One compromised key ends everything, not just this.
+7. **Trading a regime the model never saw.** Memecoin activity is strongly
    regime-dependent; a model trained in one is not valid in another. Retrain.
-7. **Believing this document over your own measurements.** Re-measure.
+8. **Believing this document over your own measurements.** Re-measure. This
+   repository's own headline result was wrong once already — a 136x trade that
+   turned out to be a broken price field — and it was only caught by auditing
+   individual trades rather than reading summary statistics.
 
 ## 8. What is legal, and what is not
 

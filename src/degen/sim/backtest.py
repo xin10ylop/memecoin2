@@ -198,7 +198,9 @@ def run(
                     exit_time = t
                     if dec.close or pos.remaining_frac <= 1e-9:
                         break
-                    dec = evaluate(pos, pool.mid, liq_now, t, cfg.exit)
+                    # Our own fill just moved the pool; re-evaluate at the new
+                    # price but do not record it as a market observation.
+                    dec = evaluate(pos, pool.mid, liq_now, t, cfg.exit, record=False)
                 if tokens_left <= 1e-9:
                     break
 

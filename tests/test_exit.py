@@ -133,3 +133,30 @@ def test_dump_detector_is_silent_before_enough_observations():
     cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=20)
     sells, _ = _drive([1.0, 1.01, 1.02, 0.5], cfg=cfg)
     assert all(s[2] != "dump_detected" for s in sells)
+
+
+def test_our_own_fill_does_not_feed_the_dump_detector():
+    """A laddered sell moves the pool. Re-evaluating at that moved price must
+    not enter the control chart, or the exit triggers its own dump signal."""
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=5)
+    pos = _pos()
+    for i, px in enumerate([1.0, 1.01, 1.02, 1.015, 1.03, 1.025, 1.04], start=1):
+        evaluate(pos, px, 20_000.0, i * 60, cfg)
+    n_before = len(pos.returns)
+    evaluate(pos, 0.60, 20_000.0, 500, cfg, record=False)   # our own impact
+    assert len(pos.returns) == n_before, "self-impact leaked into the return series"
+
+
+def test_market_observations_are_still_recorded():
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9)
+    pos = _pos()
+    evaluate(pos, 1.1, 20_000.0, 60, cfg)
+    evaluate(pos, 1.2, 20_000.0, 120, cfg)
+    assert len(pos.returns) == 2
+
+
+def test_record_false_still_returns_a_decision():
+    cfg = ExitConfig(hard_stop_x=0.55, time_stop_s=1e9)
+    pos = _pos()
+    d = evaluate(pos, 0.4, 20_000.0, 60, cfg, record=False)
+    assert d is not None and d.reason == "hard_stop"

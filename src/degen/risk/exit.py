@@ -165,11 +165,19 @@ def evaluate(
     liquidity: float,
     t: float,
     cfg: ExitConfig,
+    record: bool = True,
 ) -> ExitDecision | None:
-    """Decide what to do with an open position at the current observation."""
+    """Decide what to do with an open position at the current observation.
+
+    `record=False` evaluates without adding the price to the return series.
+    That matters when re-evaluating immediately after one of our own fills: our
+    sell moves the pool, and feeding that move back in as if it were a market
+    return would let a laddered exit trigger its own dump detector. Only genuine
+    market observations belong in the control chart.
+    """
     if pos.remaining_frac <= 1e-9 or price <= 0:
         return None
-    ret = pos.observe_price(price)
+    ret = pos.observe_price(price) if record else None
     pos.peak_price = max(pos.peak_price, price)
     x = price / pos.entry_price
     peak_x = pos.peak_price / pos.entry_price

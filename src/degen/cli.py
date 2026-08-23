@@ -1,0 +1,242 @@
+"""Command line interface.
+
+    degen status                      what the system knows right now
+    degen scan                        top current candidates, with reasons
+    degen collect                     run the research data collector
+    degen harvest                     pull historical price paths
+    degen backtest                    evaluate the strategy on collected data
+    degen basrates                    the honest outcome distribution
+    degen train                       fit the model (refuses if underpowered)
+    degen trade --mode paper          run the trader
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import typer
+
+from .util.log import setup
+
+app = typer.Typer(add_completion=False, help="Quantitative memecoin trading system.")
+
+
+@app.command()
+def status() -> None:
+    """Show data volume, model state, and open positions."""
+    setup()
+    from .store.lake import DISCOVERIES, EVENTS, OHLCV, SNAPSHOTS, TRADES, lake
+
+    lk = lake()
+    print("=== data lake ===")
+    for ds in (DISCOVERIES, SNAPSHOTS, OHLCV, TRADES, EVENTS):
+        print(f"  {ds:14} {lk.count(ds):>9,} rows")
+    con = lk.con()
+    try:
+        r = con.execute("select count(distinct mint) m, min(observed_at) a, max(observed_at) b from snapshots").fetchone()
+        span = (r[2] - r[1]) / 3600 if r[1] and r[2] else 0
+        print(f"  tracked mints: {r[0]:,}   span: {span:.2f} h")
+    except Exception:
+        pass
+    mp = Path("models/signal_lgbm.txt")
+    print(f"\n=== model ===\n  {'trained: ' + str(mp) if mp.exists() else 'not trained (rule scorer active)'}")
+    if Path("models/train_report.json").exists():
+        rep = json.loads(Path("models/train_report.json").read_text())
+        print(f"  top-decile precision {rep.get('mean_top_precision'):.3f}  lift {rep.get('mean_lift'):.2f}")
+    try:
+        t = con.execute("select mode, count(*) n, sum(pnl_sol) pnl, avg(realized_x) x from trades group by 1").df()
+        if len(t):
+            print("\n=== trades ===")
+            print(t.to_string(index=False))
+    except Exception:
+        pass
+
+
+@app.command()
+def scan(top: int = 15, age: int = 300, deep: bool = False) -> None:
+    """Score every token currently being tracked and print the best."""
+    setup()
+    from .features.build import features_at
+    from .safety.filters import SafetyConfig, check_local, check_rugcheck
+    from .signals.score import CompositeScorer
+    from .store.lake import lake
+
+    snaps = lake().df("snapshots")
+    if snaps.empty:
+        print("no snapshots yet - run `degen collect` first")
+        raise typer.Exit(1)
+    snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0)]
+    sc, cfg = CompositeScorer(), SafetyConfig()
+    out = []
+    for mint, h in snaps.groupby("mint"):
+        f = features_at(h.sort_values("age_s"), age)
+        if f is None:
+            continue
+        safe = check_local(f, cfg)
+        r = sc.score(f)
+        out.append((r.score, safe.ok, f, r, safe))
+    out.sort(key=lambda x: -x[0])
+    print(f"{'symbol':<14}{'score':>7}{'safe':>6}{'liq$':>11}{'hold':>6}{'devmints':>9}  why")
+    for s, ok, f, r, safe in out[:top]:
+        why = r.explain().split("] ", 1)[-1][:70]
+        print(f"{str(f.get('symbol'))[:13]:<14}{s:>7.3f}{('yes' if ok else 'NO'):>6}"
+              f"{(f.get('liquidity') or 0):>11,.0f}{str(f.get('holder_count')):>6}"
+              f"{str(f.get('dev_mints')):>9}  {why}")
+        if not ok:
+            print(f"{'':14}  rejected: {safe.rejects[:2]}")
+        if deep and ok:
+            d = check_rugcheck(str(f["mint"]), cfg)
+            print(f"{'':14}  rugcheck: ok={d.ok} {d.rejects[:2]} {d.warnings[:1]}")
+
+
+@app.command()
+def collect() -> None:
+    """Run the data collector (discovery + forward tracking)."""
+    from .collect.collector import main as run
+
+    run()
+
+
+@app.command()
+def harvest(pages: int = 6, max_pages: int = 5, limit: int = 0) -> None:
+    """Harvest historical OHLCV price paths for exit-policy fitting."""
+    setup()
+    from .collect.ohlcv_harvest import build_universe, harvest as do
+
+    uni = build_universe(pages)
+    do(uni, max_pages=max_pages, limit=limit or None)
+
+
+@app.command()
+def baserates(min_age: int = 180, min_obs: int = 5) -> None:
+    """The honest outcome distribution of the launches we observed."""
+    setup()
+    import numpy as np
+
+    from .store.lake import lake
+
+    con = lake().con()
+    d = con.execute("""
+        with f as (
+          select mint, price_usd p0, observed_at t0, age_s a0 from (
+            select *, row_number() over (partition by mint order by observed_at) rn
+            from snapshots where price_usd > 0) where rn = 1)
+        select f.mint, f.a0, max(s.price_usd)/f.p0 maxx, max(s.liquidity) liqmax,
+               max(s.holder_count) hmax, count(*) n
+        from snapshots s join f on s.mint = f.mint
+        where s.price_usd > 0 group by f.mint, f.p0, f.a0
+    """).df()
+    d = d[(d.a0 < min_age) & (d.n >= min_obs)]
+    # A first print that is essentially zero produces a meaningless multiple and
+    # a mean in the millions. Drop those rather than reporting a fantasy.
+    d = d[d.maxx.notna() & np.isfinite(d.maxx) & (d.maxx < 1e5)]
+    if d.empty:
+        print("not enough data yet")
+        raise typer.Exit(1)
+    n = len(d)
+    print(f"census of {n} launches caught <{min_age}s old with >={min_obs} observations\n")
+    for m in (1.3, 1.5, 2, 3, 5, 10, 20, 50):
+        k = int((d.maxx >= m).sum())
+        lo, hi = _wilson(k, n)
+        print(f"  ever >= {m:>4}x : {k:>5} / {n}  = {100*k/n:6.3f}%   95% CI [{100*lo:.3f}%, {100*hi:.3f}%]")
+    trimmed = d.maxx[d.maxx <= d.maxx.quantile(0.99)]
+    print(f"\n  median peak multiple      : {d.maxx.median():.3f}x")
+    print(f"  mean peak multiple        : {d.maxx.mean():.3f}x   (the tail is the whole story)")
+    print(f"  mean excluding top 1%     : {trimmed.mean():.3f}x   (what you get without a jackpot)")
+    print(f"  p99 peak multiple         : {d.maxx.quantile(0.99):.2f}x")
+    print(f"  reached $10k liquidity: {100*(d.liqmax>=10000).mean():.2f}%")
+    print(f"  reached 50 holders    : {100*(d.hmax>=50).mean():.2f}%")
+
+
+def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n == 0:
+        return 0.0, 0.0
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return max(0.0, c - h), min(1.0, c + h)
+
+
+@app.command()
+def backtest(threshold: float = 0.55, size: float = 0.5, safety: bool = True, venue: str = "pumpfun") -> None:
+    """Backtest the current strategy on collected snapshots."""
+    setup()
+    import numpy as np
+
+    from .safety.filters import SafetyConfig, check_local
+    from .signals.score import CompositeScorer
+    from .sim.backtest import BacktestConfig, run
+    from .sim.costs import CostModel
+    from .store.lake import lake
+
+    snaps = lake().df("snapshots")
+    snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0) & snaps.age_s.notna()]
+    if snaps.empty:
+        print("no data")
+        raise typer.Exit(1)
+    sc, saf = CompositeScorer(rule_threshold=threshold), SafetyConfig()
+
+    def sig(f):
+        if safety and not check_local(f, saf).ok:
+            return None
+        r = sc.score(f)
+        return float(np.clip(r.score, 0.3, 1.0)) if r.score >= threshold else None
+
+    t, s = run(snaps, sig, BacktestConfig(base_size_sol=size, costs=CostModel(venue=venue)))
+    print(json.dumps(s, indent=2, default=str))
+    if not t.empty:
+        pnl = np.sort(t.pnl_sol.values)[::-1]
+        print("\nrobustness (profit is meaningless if one trade carries it):")
+        for k in range(0, min(4, len(pnl))):
+            rest = pnl[k:]
+            print(f"  drop top {k}: total={rest.sum():+.4f} SOL  mean={rest.mean():+.5f}  win%={100*(rest>0).mean():.1f}")
+
+
+@app.command()
+def train(target: float = 1.5, horizon: int = 3600) -> None:
+    """Fit the signal model. Refuses when the data cannot support it."""
+    setup()
+    from .features.build import build_panel
+    from .model.train import TrainConfig, train as do
+    from .store.lake import lake
+
+    snaps = lake().df("snapshots")
+    snaps = snaps[snaps.price_usd.notna() & (snaps.price_usd > 0)]
+    panel = build_panel(snaps, horizon_s=horizon)
+    print(f"panel: {len(panel)} rows from {snaps.mint.nunique()} mints")
+    r = do(panel, TrainConfig(target_x=target))
+    if not r.ok:
+        print(f"NOT TRAINED: {r.reason}")
+        raise typer.Exit(1)
+    print(f"trained. rows={r.n_rows} positives={r.n_positives} base={r.base_rate:.4f}")
+    print(f"top-decile precision {r.mean_top_precision:.3f} (lift {r.mean_lift:.2f}x), "
+          f"mean multiple in top decile {r.mean_top_mult:.3f}")
+    print("top features:", list(r.importance)[:12])
+
+
+@app.command()
+def trade(
+    mode: str = typer.Option("paper", help="paper | dry | live"),
+    bankroll: float = 5.0,
+    threshold: float = 0.55,
+    i_understand_the_risk: bool = typer.Option(False, help="required for --mode live"),
+) -> None:
+    """Run the trader."""
+    setup()
+    from .live.trader import LiveTrader, TraderConfig
+    from .risk.manager import RiskConfig
+
+    if mode == "live" and not i_understand_the_risk:
+        print("live mode requires --i-understand-the-risk and DEGEN_WALLET_KEY.")
+        raise typer.Exit(2)
+    cfg = TraderConfig(mode=mode, score_threshold=threshold, risk=RiskConfig(bankroll_sol=bankroll))
+    LiveTrader(cfg).run()
+
+
+def main() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    main()

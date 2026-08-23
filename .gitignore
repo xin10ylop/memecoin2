@@ -1,0 +1,18 @@
+# Collected market data and run artifacts - regenerated, and large.
+data/
+logs/
+models/*.txt
+*.parquet
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Never commit keys.
+.env
+.env.*
+*.key
+wallet*.json

@@ -1,0 +1,404 @@
+{
+  "topic": "Solana low-latency execution infrastructure for memecoin sniping: providers, priority fees, Jito tips, compute budgets, detection paths, and MEV risk on buys",
+  "executive_summary": "All numbers marked \"MEASURED\" below are my own direct on-chain measurements taken 2026-08-23 against api.mainnet-beta.solana.com around slot 441,149,399, not repeated from marketing pages. The single most important finding: pump.fun's fee market is a *local* fee market that is 100-200x the global one. Global non-zero prioritization floor was ~2,986 microlamports/CU, while the pump.fun bonding-curve program's local floor ran p50=100,002 and p75=535,714 microlamports/CU in the same 150-slot window. Sampling 272 successful pump.fun transactions from 14 full blocks, landed cu_price was p50=264,166, p75=812,534, p90=4,000,000 and p99=40,000,000 microlamports/CU \u2014 so a competitive snipe needs roughly 1-4 million microlamports/CU, and the p50 bot is paying ~0.26 SOL-cents of priority fee, not the \"medium 40,000 microlamports\" that generic fee APIs return. Jito tips are a separate and thinner channel: only 12% of landed pump.fun txs carried a Jito tip at all, and among those the distribution was bimodal \u2014 p50=10,000 lamports but p90=3,000,000 and p99=5,000,000 lamports (0.003-0.005 SOL). Jito's own tip_floor API read 75th percentile = 9,523 lamports at the same moment, which is a network-wide floor and is badly misleading as a snipe target; budget 0.001-0.005 SOL for a contested mint, not 0.00001. Compute budgets: measured whole-transaction CU consumed was pump.fun bonding curve median 153,860 (min 55,587), PumpSwap AMM median 85,938, Raydium AMM v4 median 142,828, Raydium CPMM median 25,304. Set 100k CU for a warm-ATA PumpSwap buy and ~150k for a pump.fun buy including ATA creation; the sol-trade-sdk production default is exactly 150,000 CU limit / 500,000 microlamports price, which matches my measured local fee market closely. A critical and underreported finding: 77.1% of transactions touching the pump.fun bonding curve program FAIL (n=4,000), but inspecting the failures shows the dominant mode is *not* slippage \u2014 it is third-party sniper \"guard\" programs (e.g. 4qjYbRdexhF9hXDfzYScnzEAzE6GnUjB1RKjhEakqyu9, 7JwTi9ambvCTYwZbNQEZA8hzpG3ymPWRZpAxgKPJ94ZG) aborting with custom error 0x7 after consuming only ~950-2,750 CU. Professional snipers deliberately front their swap with a cheap on-chain precondition check so a lost race costs ~5,000 lamports base fee instead of a bad fill. You should copy this pattern. On colocation: I pulled the live leader schedule \u2014 676 validators, 432,000 slots/epoch, strictly 4 consecutive slots per leader, top-10 leaders = 24.48% of slots, and just 40 of 676 validators produce 50% of all slots. That concentration is why multi-region submission beats single-region: you cannot colocate next to 40 validators, so you fan out. Latency ordering is settled and consistent across sources: raw shreds (sub-50ms, 100-500ms ahead of Geyser) > Geyser/LaserStream gRPC (p50 ~3ms delivery delta, ~8ms faster than `processed`) > websocket logsSubscribe > polling (2-5s). Use Geyser transactionSubscribe with a program filter as the baseline detector and shreds only if you are willing to pay $800-1,000/month/IP and handle deshredding yourself. On MEV: pump.fun's bonding curve is a constant-product curve and is fully sandwichable. Sandwich bots extracted $370-500M over Jan 2024-May 2025; the Vpe bot alone did 1.55M sandwiches in 30 days at an average of 0.0425 SOL ($8.67) profit per attack, and 16 of the top 20 sandwiched tokens were pump.fun launches. Your slippage setting is the attack surface: Jupiter's published dynamic-slippage config caps `pump_new_graduate_first_hour` at 1000-2000 bps and `degen_buy` at 1000-2500 bps, and those caps are the ceiling a sandwicher can extract. Mitigations in order of effectiveness: Jito bundles (atomic, unsandwichable within the bundle), Helius Sender with `?mev-protect=true` (routes around validators statistically linked to sandwiching), hard slippage caps, and never using a public mempool-visible path. Where sources disagree I have flagged it \u2014 notably Helius Sender's minimum tip is documented as 0.001 SOL on the current docs page but 0.0002 SOL in the zero-slot blog and in the sol-trade-sdk constant; treat 0.001 SOL as current.",
+  "executive_summary_note": "See findings for per-provider pricing and endpoints.",
+  "findings": [
+    {
+      "claim": "pump.fun operates a local fee market roughly 100-200x the global prioritization fee floor; generic fee estimators will badly underprice a snipe",
+      "detail": "MEASURED 2026-08-23 via getRecentPrioritizationFees over a 150-slot window. GLOBAL (no account filter): only 2/150 slots non-zero, p50=2,986 microlamports/CU. pump.fun bonding curve program (6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P): 7/150 slots non-zero, p25=2,986, p50=100,002, p75=535,714, p90/p99=714,285, max=714,285 microlamports/CU. PumpSwap AMM (pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA): p50=27,393, p75=80,000, p90=150,000. Raydium AMM v4 (675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8): p50=436,364, p75=523,034. WSOL mint as a control: 112/150 slots non-zero but p50=only 9 microlamports/CU. Helius getPriorityFeeEstimate 'medium' returns roughly 40,000 microlamports/CU which is ~13x too low for the pump.fun p75.",
+      "confidence": "high",
+      "actionable_for_bot": "Never call getPriorityFeeEstimate with no accountKeys. Always pass the specific hot accounts (bonding curve PDA, pool PDA, program ID) so you get the LOCAL market. Better: run your own rolling estimator \u2014 call getRecentPrioritizationFees([<bonding_curve_pda>, <pool_pda>]) every slot, keep a 150-slot ring buffer, and set cu_price = max(p75_local, 500_000) for a contested snipe. Hardcode a floor of 500,000 microlamports/CU for any pump.fun buy.",
+      "source_url": "https://www.helius.dev/docs/priority-fee-api"
+    },
+    {
+      "claim": "Real landed pump.fun transactions pay p50=264k and p90=4M microlamports/CU; only 12% carry a Jito tip and the tip distribution is bimodal",
+      "detail": "MEASURED 2026-08-23: parsed 14 consecutive full blocks via getBlock, extracted every successful transaction touching the pump.fun bonding curve program (n=272), decoded ComputeBudget SetComputeUnitPrice (discriminator 0x03, u64 LE) and summed positive balance deltas to the 8 canonical Jito tip accounts. Results \u2014 cu_price microlamports/CU: p50=264,166, p75=812,534, p90=4,000,000, p99=40,000,000, max=116,999,610. Jito tips: 33/272 txs (12%) tipped at all; among tippers, lamports p50=10,000, p75=100,000, p90=3,000,000, p99=5,000,000, max=5,000,000. Total transaction fee lamports: p50=44,625, p90=1,005,000, p99=12,005,000. So the median landed pump.fun tx costs ~0.0000446 SOL all-in but the 99th-percentile competitive tx costs ~0.012 SOL.",
+      "confidence": "high",
+      "actionable_for_bot": "Tier your spend by conviction. Tier 1 (routine entry, non-contested): cu_price 500,000, CU limit 150,000, no Jito tip -> ~0.000080 SOL priority + 0.000005 base. Tier 2 (contested new mint): cu_price 2,000,000 + Jito tip 1,000,000 lamports (0.001 SOL) -> ~0.0013 SOL. Tier 3 (high-conviction snipe, top-of-block): cu_price 4,000,000 + tip 3,000,000-5,000,000 lamports -> ~0.0036-0.0056 SOL. Gate Tier 3 behind an expected-value check: at 0.005 SOL/attempt you need >0.005 SOL expected profit, which at typical memecoin hit rates means position sizes of at least 0.5-1 SOL.",
+      "source_url": "https://docs.jito.wtf/lowlatencytxnsend/"
+    },
+    {
+      "claim": "Jito's tip_floor API reports a network-wide floor that is 100-500x below what a competitive snipe actually needs \u2014 do not use it as your tip target",
+      "detail": "MEASURED live 2026-08-23T11:35:10Z from https://bundles.jito.wtf/api/v1/bundles/tip_floor (raw response): landed_tips_25th_percentile=1.0e-6 SOL, 50th=4.5355e-6, 75th=9.5235e-6, 95th=0.0001, 99th=0.0001 SOL, ema_landed_tips_50th_percentile=5.1567e-6 SOL. That p75 of 9,523 lamports is two to three orders of magnitude below my measured p90 pump.fun tip of 3,000,000 lamports. The API aggregates ALL bundles network-wide (including cheap arbitrage spam), not the contested-mint subset. Note the 95th and 99th percentiles both pinning at exactly 0.0001 suggests a reporting cap or rounding artifact in the endpoint. A WebSocket stream of the same data is at wss://bundles.jito.wtf/api/v1/bundles/tip_stream. Jito's documented absolute minimum tip is 1,000 lamports. Jito takes a 5% fee on tips per their own MEV report (one secondary source says 6% \u2014 Jito's own figure of 5% is more reliable).",
+      "confidence": "high",
+      "actionable_for_bot": "Poll tip_floor (or subscribe to tip_stream) for a *floor sanity check only*, then apply a multiplier derived from your own observed competition. Concretely: tip = max(tip_floor_p75 * 50, 1_000_000 lamports) for a contested mint. Build your own percentile tracker instead: stream landed blocks, sum deltas to the 8 Jito tip accounts for transactions touching your target program, and maintain a rolling p75/p90 of *that* subset. This is the highest-value piece of custom telemetry you can build.",
+      "source_url": "https://bundles.jito.wtf/api/v1/bundles/tip_floor"
+    },
+    {
+      "claim": "77.1% of pump.fun bonding-curve transactions fail, but the dominant failure is a deliberate cheap guard-program abort, not slippage \u2014 this is a pattern to copy",
+      "detail": "MEASURED 2026-08-23 over n=4,000 recent signatures per program via getSignaturesForAddress. pump.fun bonding curve: 22.9% success / 77.1% fail; failure breakdown InstructionError Custom:7 = 40.4%, Custom:13 = 19.0%, Custom:3 = 11.1%, Custom:6000 = 3.6%, Custom:100 = 0.7%. Raydium LaunchLab (LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj): 37.6% success / 62.4% fail, Custom:7 = 53.2%. PumpSwap AMM: 82.7% success / 17.3% fail (Custom:1=3.5%, Custom:5000=3.4%, Custom:1001=2.5%). Crucially, I pulled logMessages for the Custom:7/13/3 failures: they do NOT originate from the pump.fun program. They come from third-party sniper router programs \u2014 4qjYbRdexhF9hXDfzYScnzEAzE6GnUjB1RKjhEakqyu9, 7JwTi9ambvCTYwZbNQEZA8hzpG3ymPWRZpAxgKPJ94ZG, DhpyNWkdxFh3DRPsBrwRwrK3TYC5t7Q4arnSvf3t84HY, 4F3t3Tpiyoi7Dn8oHytwJFVYJJf8cervvPL7DsZMDnCn \u2014 each consuming only 951 / 2,747 / 2,750 / 3,820 CU before failing. These are pre-condition guards that abort before the swap executes.",
+      "confidence": "high",
+      "actionable_for_bot": "Deploy (or use) a thin on-chain guard program that runs FIRST in your transaction and checks: (a) bonding curve real_sol_reserves is still below your entry threshold, (b) the token was created within N slots, (c) top-holder concentration proxy, (d) your expected out-amount is still achievable. Abort with a custom error if any check fails. Cost of a lost race drops to 5,000 lamports base fee + ~3,000 CU of priority fee instead of a filled bad entry. Because the priority fee is charged on the *requested* CU limit, not consumed, keep the CU limit low on guard-heavy paths. Also note: the raw 77% failure rate means any 'landing rate' you compute must be measured against your own signatures, not the program aggregate.",
+      "source_url": "https://api.mainnet-beta.solana.com"
+    },
+    {
+      "claim": "Measured compute unit consumption per venue \u2014 set CU limits at 100k-150k, not the 200k default and never 1.4M",
+      "detail": "MEASURED 2026-08-23, whole-transaction computeUnitsConsumed from getTransaction on recent successful txs. pump.fun bonding curve (n=10): min=55,587 median=153,860 max=251,163. PumpSwap AMM (n=11): min=7,375 median=85,938 max=163,801. Raydium AMM v4 (n=8): min=47,437 median=142,828 max=149,303. Raydium CPMM (n=14): min=20,740 median=25,304 max=109,718. Raydium LaunchLab (n=14): min=18,658 median=84,920 max=348,638. Separately, requested CU limits observed in the wild: pump.fun p50=90,000 p75=350,000 p90=1,400,000; PumpSwap p25=200,000 p50=286,709 p75=300,000 \u2014 i.e. most bots massively over-request and overpay. Production reference: sol-trade-sdk (github.com/0xfnzero/sol-trade-sdk) constants/trade.rs sets DEFAULT_TIP_UNIT_LIMIT=150000, DEFAULT_TIP_UNIT_PRICE=500000, DEFAULT_RPC_UNIT_LIMIT=150000, DEFAULT_RPC_UNIT_PRICE=500000, DEFAULT_BUY_TIP_FEE=0.0006 SOL, DEFAULT_SELL_TIP_FEE=0.0001 SOL; its tests assert buy cu_limit=100,000 and sell cu_limit=90,000. Solana default is 200,000 CU/instruction, hard cap 1,400,000 CU/tx.",
+      "confidence": "high",
+      "actionable_for_bot": "Hardcode these CU limits: pump.fun buy with ATA creation = 160,000; pump.fun buy with warm ATA = 100,000; pump.fun sell = 90,000; PumpSwap buy = 100,000; Raydium AMM v4 swap = 150,000; Raydium CPMM = 40,000. Do NOT simulate before a snipe \u2014 simulateTransaction costs a full RTT you cannot afford. Instead precompute per-venue constants offline and add a 15% margin. Because priority fee = cu_price * cu_limit, dropping from a lazy 1,400,000 CU limit to 150,000 at 500,000 microlamports/CU saves 0.000625 SOL per attempt \u2014 at 1,000 attempts/day that is 0.625 SOL/day.",
+      "source_url": "https://solana.com/docs/core/fees/compute-budget"
+    },
+    {
+      "claim": "Live leader schedule is 676 validators, exactly 4 consecutive slots each, with 40 validators producing 50% of slots \u2014 this dictates a multi-region fan-out, not a single colocation",
+      "detail": "MEASURED 2026-08-23 via getLeaderSchedule. 676 validators hold slots; 432,000 slots per epoch; top-10 leaders = 24.48% of all slots; 40 of 676 validators produce 50% of slots. Sampled validator slot offsets confirm strict 4-slot runs: [24856,24857,24858,24859, 34256,34257,34258,34259, 36704,...]. At 400ms/slot a leader holds the pen for ~1.6 seconds. Slots-per-validator mode was 84-148. Geographic concentration per secondary sources: highest-stake density in Ashburn VA and NY metro, secondary clusters Frankfurt and Amsterdam (one source claims Amsterdam alone is ~a quarter of slots \u2014 I could not verify this independently, treat as low confidence), growing Tokyo/Seoul. Colocation in FRA/LON/NY reportedly achieves sub-30ms RTT to the nearest leader. A 100-150ms trans-Atlantic RTT consumes 25-35% of a 400ms slot before the RPC even forwards.",
+      "confidence": "high",
+      "actionable_for_bot": "Do not pick one region. Fetch getLeaderSchedule once per epoch, map each leader identity to a region (via validators.app or your own gossip crawl of contact_info IPs -> GeoIP), and precompute a slot->region table. Submit each transaction to 2-4 regional endpoints simultaneously, always including the region matching the CURRENT and NEXT leader (you know it 4 slots ahead). Cache the schedule; it only changes each epoch (~2 days). Minimum viable footprint: one box in Frankfurt or Amsterdam plus one in NY/Ashburn. Note the 4-slot run means if you miss the current leader you have ~1.6s before the next \u2014 plenty of time to retry with a different region, so build retry-with-region-switch rather than blind resubmission.",
+      "source_url": "https://latency.glassnode.com/solana/about"
+    },
+    {
+      "claim": "Detection latency ordering: shreds < Geyser/LaserStream gRPC < websocket logsSubscribe < polling, with shreds 100-500ms ahead of Geyser",
+      "detail": "Decoded shreds achieve sub-50ms latency and give 'earliest bytes'. Jito ShredStream / shred-based feeds deliver transaction intent typically 100-500ms earlier than standard Yellowstone gRPC because shreds are emitted by the leader before the block is complete and before Turbine propagation finishes. Helius LaserStream ingests raw shreds and its 'preprocessed transactions' arrive ~8ms faster on average than the `processed` commitment level; published latency deltas for Helius were p50=2.92ms, p95=26.58ms, p99=45.08ms (source: shreder.xyz benchmark \u2014 note this is a competitor's benchmark of Helius, so it is adversarial; treat the absolute values as indicative not authoritative; I attempted to fetch the full benchmark page and it returned HTTP 503). Geyser gRPC vs RPC polling: ~400ms vs 2-5 seconds. blockSubscribe has documented stability problems on high-traffic programs (connection errors, skipped data) and should not be used. logsSubscribe works for pump.fun Create detection and has better cross-provider availability, but exposes less context than transactionSubscribe.",
+      "confidence": "medium",
+      "actionable_for_bot": "Build the detector in tiers. Baseline: Yellowstone/LaserStream gRPC transactionSubscribe with accountInclude=[pump.fun program] and failed=false, parse the Create instruction to extract mint, bondingCurve PDA, name, symbol, uri, creator. This is the best latency-per-dollar. Do NOT use blockSubscribe. Keep logsSubscribe only as a redundant failover feed on a second provider \u2014 dual-feed with dedup on signature, act on whichever arrives first. Add shreds (Jito ShredStream or Helius Raw Shreds at $1,000/mo/IP) only after you have proven profitability, since you must implement deshredding and handle the fact that shred data is pre-execution and may not land. Critically: because shreds are pre-execution, a shred-derived signal can be for a transaction that ultimately fails \u2014 always re-validate against the confirmed state before sizing up.",
+      "source_url": "https://www.helius.dev/docs/faqs/laserstream"
+    },
+    {
+      "claim": "Helius Sender is the best single-integration multi-path submitter; minimum tip is documented inconsistently across Helius's own sources",
+      "detail": "Endpoints: https://sender.helius-rpc.com/fast (auto-routed) and /ping for connection warming. Regional HTTP for backends: slc-, ewr-, lon-, fra-, ams-, sg-, tyo-sender.helius-rpc.com/fast. Submits simultaneously across Helius, Jito, Harmonic and Rakurai pathways. Default 50 TPS, no API credits consumed, available on every plan including free. Supports sendBundle with up to 4 transactions (vs Jito's 5). Has a `?mev-protect=true` query parameter that routes around validators statistically linked to sandwich attacks. DISAGREEMENT ON MINIMUM TIP: the current Sender docs page states Sender Max minimum = 0.001 SOL (entering a priority tip buffer for top-of-block) with a cost-optimized SWQOS-only tier at 0.000005 SOL, and states tips between 0.000005 and 0.001 SOL are accepted but routed best-effort through fewer pathways. However the Helius zero-slot blog post states 0.0002 SOL, and sol-trade-sdk's constant SWQOS_MIN_TIP_HELIUS is 0.0002 with SWQOS_MIN_TIP_HELIUS_SWQOS_ONLY=0.000005. Most likely the threshold was raised from 0.0002 to 0.001; treat 0.001 SOL as current and verify at integration time.",
+      "confidence": "medium",
+      "actionable_for_bot": "Integrate Sender as the primary submit path \u2014 one HTTP POST gets you Jito + SWQoS + two other relays in parallel, which is far cheaper than integrating 5 relays yourself. Use the regional HTTP hostname (not the auto-routed HTTPS) from your backend, selected by the leader-region table. Run a background task hitting /ping every 2-5 seconds to keep the TCP/TLS connection warm \u2014 a cold handshake costs a full RTT. Set ?mev-protect=true on all BUY transactions. Send tip >= 1,000,000 lamports (0.001 SOL) on contested mints to enter the priority buffer; drop to the 0.000005 SOL SWQOS-only tier for non-urgent exits.",
+      "source_url": "https://www.helius.dev/docs/sending-transactions/sender"
+    },
+    {
+      "claim": "Jito block engine: 8 tip accounts, 5-tx bundles, 1,000 lamport minimum, 1 req/sec/IP/region default rate limit, 50ms parallel auction ticks",
+      "detail": "Regional endpoints (all https://<region>.mainnet.block-engine.jito.wtf): ny, slc, amsterdam, dublin, frankfurt, london, singapore, tokyo, plus global https://mainnet.block-engine.jito.wtf. The 8 mainnet tip accounts: 96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5, HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe, Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY, ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49, DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh, ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt, DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL, 3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT. Minimum tip 1,000 lamports. Max 5 transactions per bundle, executed sequentially and atomically (all-or-nothing). Default rate limit 1 request/second/IP/region, returns HTTP 429 on exceed; no auth key required at default limits. Parallel auctions run at 50ms ticks, bundles grouped by account-locking patterns, highest-paying combination submitted up to a CU limit. For sendTransaction (non-bundle) Jito recommends a 70/30 split \u2014 70% priority fee, 30% Jito tip. For sendBundle only the tip matters. Jito processed 3B+ bundles in 2024 generating 3.75M SOL in tips; daily tips ranged from 781 SOL (Jan 11) to 60,801 SOL (Nov 19).",
+      "confidence": "high",
+      "actionable_for_bot": "Randomly select one of the 8 tip accounts per transaction \u2014 using a fixed one creates an account-lock hotspot that serializes you against every other bot using the same account. The 1 req/sec/IP/region limit is the binding constraint: to exceed it you need either multiple source IPs, multiple regions (the limit is per-region so 8 regions = 8 req/sec), or a paid relationship with Jito. This limit alone is why Helius Sender or a paid relay is usually better than raw Jito for a high-frequency bot. Put the tip in the SAME transaction as the buy, not a separate bundle transaction \u2014 a separate tip tx wastes a bundle slot and adds a signature. For non-bundle sends apply the documented 70/30 priority-fee/tip split.",
+      "source_url": "https://docs.jito.wtf/lowlatencytxnsend/"
+    },
+    {
+      "claim": "Third-party relay minimum tips vary 100x (0.00001 to 0.001 SOL); a production Rust SDK exposes the full table and regional endpoint maps",
+      "detail": "From github.com/0xfnzero/sol-trade-sdk src/constants/swqos.rs, minimum tips in SOL: JITO=0.00001, ASTRALANE=0.00001, DEFAULT=0.00001, HELIUS_SWQOS_ONLY=0.000005, ZERO_SLOT=0.0001, TEMPORAL=0.0001, BLOXROUTE=0.0001, NODE1=0.0001, FLASHBLOCK=0.0001, BLOCKRAZOR=0.0001, STELLIUM=0.0001, LIGHTSPEED=0.0001, SOLAMI=0.0001, GLAIVE=0.0001 (100,000 lamports), HELIUS=0.0002, NEXTBLOCK=0.001, SOYAS=0.001, SPEEDLANDING=0.001, LUNARLANDER=0.001. Regional endpoint tables in the same file (region index order: NewYork, Frankfurt, Amsterdam, Dublin, SLC, Tokyo, Singapore, London, LosAngeles, Default): NextBlock http://{ny,fra,ams,dublin,slc,tokyo,sgp,london}.nextblock.io; 0slot http://{ny,de2,ams,la,jp}.0slot.trade; Temporal/Nozomi http://{ewr1,fra2,ams1,lon1,lax1,tyo1,sgp1}.nozomi.temporal.xyz; bloXroute https://{ny,germany,amsterdam,uk,la,tokyo,global}.solana.dex.blxrbdn.com; Node1 http://{ny,fra,ams,lon,tk}.node1.me (QUIC on port 16666). Nozomi's own docs state a 0.001 SOL minimum tip with 9 regions (Pittsburgh, Newark, Ashburn, LA, Frankfurt, Amsterdam, London, Tokyo, Singapore) \u2014 this CONFLICTS with the SDK's 0.0001 constant; trust the provider docs. NextBlock's stated minimum is 0.001 SOL / 1,000,000 lamports. 0slot pricing: Trial and Entry 5 TPS at 0.001 SOL min tip, Intermediate 20 TPS at 0.001 SOL, Advanced 50 TPS at 0.0001 SOL \u2014 all tiers list price as 'contact sales', trial is free for the first week; regions Frankfurt, Amsterdam, New York, Tokyo, Los Angeles.",
+      "confidence": "medium",
+      "actionable_for_bot": "Do not hand-roll relay integrations. Vendor sol-trade-sdk (Rust) or solana-relayer-adapter-rust and use their endpoint/tip tables, but re-verify each minimum against the provider's live docs before going to production because the SDK constants drift (Nozomi and Helius are both already stale in that table). Architect submission as a fan-out: one buy transaction, signed once, POSTed concurrently to Jito + Helius Sender + one or two of {0slot, Nozomi, NextBlock, BlockRazor}, each with its own tip instruction variant. Deduplicate on signature. Budget the tip as a sunk cost on all paths \u2014 only one lands but you pay the tip only on the landed one since the others never execute.",
+      "source_url": "https://github.com/0xfnzero/sol-trade-sdk"
+    },
+    {
+      "claim": "Jupiter's production dynamic-slippage config gives exact bps caps per token category \u2014 pump.fun new graduates cap at 1000-2000 bps",
+      "detail": "From github.com/jup-ag/dynamic-slippage-config slippage_config.json, min/max basis points per category: solana 15-100, stable 10-80, lst 50-300, bluechip 50-300, default 100-1000, pump_new_graduate 500-2000, degen 500-2000, new_token 300-2000, pump_new_graduate_first_hour 1000-2000, degen_buy 1000-2500, degen_sell 1000-5000. The estimator uses real-time and historical swap data, reads token categories for both input and output mints, and applies the WORSE of the min/max heuristics between the two tokens. Jupiter's RTSE (Real-Time Slippage Estimator) is the third iteration, factoring volume, historical volatility and transaction patterns; Ultra V3 claims 34x greater sandwich protection than competitors by never selling order flow to third-party MEV searchers.",
+      "confidence": "high",
+      "actionable_for_bot": "Adopt these exact bands as your slippage state machine. Buy path: new_token (age < 1 hour, still on bonding curve) = start at 300 bps, escalate to a hard ceiling of 2000 bps only after 2 consecutive slippage-exceeded failures. pump_new_graduate_first_hour = 1000 bps start, 2000 bps hard cap. Sell path gets the wider band (degen_sell up to 5000 bps) because failing to exit is strictly worse than a bad fill. CRITICAL ASYMMETRY: your slippage cap IS the sandwicher's maximum extraction. Setting 2500 bps on a buy is an open invitation to lose 25%. Prefer a computed minimum-out amount derived from the bonding curve reserves you read at detection time plus a fixed tolerance, rather than a percentage slippage \u2014 percentage slippage on an unknown post-race price is unbounded risk.",
+      "source_url": "https://github.com/jup-ag/dynamic-slippage-config/blob/main/slippage_config.json"
+    },
+    {
+      "claim": "Sandwich attacks cost memecoin buyers $370-500M over 16 months and disproportionately target pump.fun tokens; average extraction is 0.0425 SOL per attack",
+      "detail": "Sandwich bots extracted between $370M and $500M from January 2024 to May 2025. The single Vpe bot generated $13.43M over 30 days (Dec 7 - Jan 5) executing 1.55 million sandwich transactions, averaging 0.0425 SOL ($8.67) profit per attack, annualizing to a projected 801,540 SOL. A January 2025 analytics review found sandwich attacks in 112 of 150 DeFi tokens traded that week; of the top 20 most-sandwiched tokens, 16 were pump.fun creations. Majority of victim transactions were Raydium swaps. Sandwich bots pay only 5-15% of extracted value out as tips and keep the rest \u2014 meaning they can outbid you on tips by a wide margin while remaining profitable. Solana has no public mempool, so sandwiching requires the attacker to see your transaction before execution: this happens via a colluding/leaking validator, a shared RPC that leaks, or shred observation. Per the Helius MEV report, the Agave 1.18 scheduler reduced reverted transactions from a peak of 75.7% of non-vote transactions in April 2024.",
+      "confidence": "high",
+      "actionable_for_bot": "Layered mitigation, implement all: (1) Send buys ONLY through private paths \u2014 Jito bundles, Helius Sender with mev-protect=true, or a paid relay. Never broadcast a buy via a generic public RPC sendTransaction. (2) Use Jito bundles for the buy specifically: within a bundle your transaction cannot be sandwiched by another bundle because execution is atomic and sequential. (3) Compute minimum-out from the reserves you observed and enforce it on-chain, do not use a naive percentage. (4) Because 0.0425 SOL is the average extraction and your typical position may be 0.5-2 SOL, sandwiching is a 2-8% tax \u2014 that is larger than your tip budget, so paying 0.003 SOL for a protected path is clearly positive EV. (5) Vary your tip account and submission path so you are not fingerprintable as a predictable victim.",
+      "source_url": "https://www.helius.dev/blog/solana-mev-report"
+    },
+    {
+      "claim": "Provider pricing: Helius $49-999/mo tiers with gRPC gated at $499; Chainstack is the cheapest credible gRPC at ~$49/mo; dedicated nodes cluster at $2,200-2,900/mo",
+      "detail": "HELIUS: Free $0 (1M credits, 10 RPC req/sec, 1 sendTransaction/sec, LaserStream WSS only); Developer $49 (10M credits, 50/sec, 5 sendTx/sec, devnet gRPC only, staked connections + Sender available); Business $499 (100M credits, 200/sec, 50+ sendTx/sec, 5 sendBundle/sec, full mainnet LaserStream gRPC, up to 10 concurrent gRPC connections); Professional $999 (200M credits, 500/sec, up to 100 concurrent gRPC connections); Enterprise custom (1B+ credits). LaserStream Plus data add-ons (Professional): 5TB $400/mo, 10TB $750, 25TB $1,750, 50TB $3,250, 100TB $6,000; overage 2 credits per 0.1MB uncompressed; streaming credit rate reduced to 20 credits/MB (~$100/TB effective). Raw Shreds $1,000/mo per IP ($800 on Pro). Helius dedicated nodes from $2,900/mo with gRPC, bundle simulation, colocation options. LaserStream: 9 regional endpoints, auto-failover, 24-hour historical replay, 10M account-includes per stream, unlimited program filters, drop-in Yellowstone-compatible (change endpoint + token). NOTE: one source claims LaserStream is NOT Yellowstone-compatible (proprietary wire format) while Helius's own docs call it a drop-in replacement \u2014 trust Helius's docs, the contrary claim is from a competitor's marketing page. TRITON ONE: creator of Yellowstone/Dragon's Mouth, Steamboat, Old Faithful; dedicated nodes from ~$2,900/mo; pay-as-you-go from a $125 prepaid deposit usable across chains. QUICKNODE: gRPC from ~$499/mo; tier path Start -> Stream (adds Yellowstone gRPC) -> Aperture $499/mo (adds ShredStream and Aperture TxStream, which adds ~791 microseconds to median delivery). SHYFT: from $199/mo, gRPC + RabbitStream shred streaming + staked RPCs across 7 regions, multi-node failover, slot replay, unlimited streaming with no credit or bandwidth caps. CHAINSTACK: Yellowstone gRPC as an add-on from ~$49/mo for 2 concurrent streams, 7 streams on the next tier.",
+      "confidence": "medium",
+      "actionable_for_bot": "Recommended stack by stage. Prototype ($49-248/mo): Chainstack gRPC add-on ~$49 for detection + Helius Developer $49 for Sender submission + free Jito block engine. Production ($700-1,000/mo): Helius Business $499 (LaserStream gRPC, 10 connections, Sender at 50 TPS, sendBundle) + Shyft $199 as an independent second detection feed for redundancy. Scale ($3,000-5,000/mo): add a Triton or Helius dedicated node ~$2,900/mo colocated in Frankfurt or Amsterdam, plus Raw Shreds $800-1,000/mo/IP. Do not buy shreds before you have proven edge \u2014 the marginal 100-500ms only matters if the rest of your pipeline is already sub-50ms. Always run two providers for detection: a single-provider outage during a launch window is a total loss of the opportunity, and these providers do have incidents.",
+      "source_url": "https://www.helius.dev/pricing"
+    },
+    {
+      "claim": "BlockRazor's own benchmark shows only 30-40% first-arrival rates even for the winning provider \u2014 no provider lands first consistently, which mandates fan-out",
+      "detail": "BlockRazor benchmark (2025-08-01, vendor-published so treat as favorable to BlockRazor): services tested were BlockRazor, bloXroute, 0Slot and Temporal. Methodology was deploying in-region and simultaneously sending DurableNonce transfer transactions to multiple providers, measuring first-arrival at the leader, filtering out Jito-route transactions to isolate the SWQoS route. Parameters: Jito tip 0.001 SOL, priority fee 0.001 SOL, sending frequency one transaction per 1.6 seconds (i.e. one per leader rotation). Results: BlockRazor Frankfurt reached the leader first in 30.12% of transactions; BlockRazor New York 39.83%. Even as the self-declared winner, that leaves 60-70% of races lost to other providers. Separately, Chorus One found 'normal' and 'slow' user categories take 10-60 seconds to inclusion without swQoS, and that swQoS materially reduces inclusion time; Helius cites Chorus One research suggesting swQoS can outperform Jito particularly when p95 latency exceeds 40 seconds.",
+      "confidence": "medium",
+      "actionable_for_bot": "This is the strongest single argument for parallel multi-path submission: since the best provider wins only ~40% of races in its own benchmark, submitting to N providers concurrently raises your first-arrival probability to roughly 1-(1-p)^N. Sending to 3 uncorrelated relays at ~35% each gives ~72%. Implement submission as fire-and-forget concurrent POSTs with a shared signed transaction, never sequential-with-fallback (sequential costs you a full RTT per hop, ~1 slot each). Track per-provider, per-region win rate in your own telemetry and reweight monthly \u2014 vendor benchmarks are marketing and your own numbers are the only ones that matter. Also note the 1.6s send frequency in their methodology equals exactly one leader rotation (4 slots x 400ms), confirming leader rotation is the natural unit of retry.",
+      "source_url": "https://blockrazor.io/blog/20250801Benchmarking/"
+    }
+  ],
+  "concrete_apis": [
+    {
+      "name": "Helius Sender",
+      "base_url_or_pkg": "https://sender.helius-rpc.com/fast ; regional: http://{slc,ewr,lon,fra,ams,sg,tyo}-sender.helius-rpc.com/fast ; warm-up: /ping",
+      "what_it_gives": "Single-POST multi-path submission across Helius, Jito, Harmonic, Rakurai simultaneously. sendTransaction (base64) and sendBundle (up to 4 tx). Optional ?mev-protect=true routes around validators statistically linked to sandwiching.",
+      "auth": "None required for base tier; optional ?api-key=YOUR_SENDER_API_KEY for elevated TPS (requires approval)",
+      "rate_limits": "50 TPS default; higher on Professional via contact form",
+      "cost": "No API credits consumed. Pay per transaction via SOL tip. Min tip 0.001 SOL for Sender Max priority buffer, 0.000005 SOL for SWQOS-only tier. Available on all plans incl. free."
+    },
+    {
+      "name": "Jito Block Engine",
+      "base_url_or_pkg": "https://{ny,slc,amsterdam,dublin,frankfurt,london,singapore,tokyo}.mainnet.block-engine.jito.wtf ; global https://mainnet.block-engine.jito.wtf",
+      "what_it_gives": "sendBundle (max 5 tx, atomic sequential all-or-nothing) and sendTransaction proxy. Parallel auctions at 50ms ticks. 8 hardcoded tip accounts.",
+      "auth": "None required at default limits",
+      "rate_limits": "1 request/second/IP/region; HTTP 429 on exceed. Per-region so 8 regions = 8 req/sec effective.",
+      "cost": "Free API. Jito takes 5% of tips. Minimum tip 1,000 lamports."
+    },
+    {
+      "name": "Jito tip floor / tip stream",
+      "base_url_or_pkg": "https://bundles.jito.wtf/api/v1/bundles/tip_floor (REST) ; wss://bundles.jito.wtf/api/v1/bundles/tip_stream (WebSocket)",
+      "what_it_gives": "25/50/75/95/99th percentile of landed tips plus EMA of the 50th. VERIFIED LIVE 2026-08-23: p25=1.0e-6, p50=4.5355e-6, p75=9.5235e-6, p95=1e-4, p99=1e-4 SOL, ema_p50=5.1567e-6 SOL.",
+      "auth": "None",
+      "rate_limits": "Not documented",
+      "cost": "Free"
+    },
+    {
+      "name": "Helius LaserStream (Yellowstone-compatible gRPC)",
+      "base_url_or_pkg": "9 regional gRPC endpoints; drop-in Yellowstone replacement (rpcpool/yellowstone-grpc client works)",
+      "what_it_gives": "Account/transaction/block/slot streaming. Preconfirmations (pre-shredding), preprocessed transactions ~8ms faster than 'processed'. 24h historical replay, auto-failover. 10M account-includes per stream, unlimited program filters.",
+      "auth": "API key / token",
+      "rate_limits": "Business: 10 concurrent gRPC connections. Professional: 100.",
+      "cost": "gRPC gated at Business $499/mo. Data add-ons 5TB $400 / 10TB $750 / 25TB $1,750 / 50TB $3,250 / 100TB $6,000 per month. Overage 2 credits per 0.1MB. ~$100/TB effective. Raw Shreds $1,000/mo/IP ($800 on Pro)."
+    },
+    {
+      "name": "Helius getPriorityFeeEstimate",
+      "base_url_or_pkg": "Helius RPC endpoint, method getPriorityFeeEstimate",
+      "what_it_gives": "Priority fee levels min (0-20th pct), low (20-40), medium (40-60, default), high (60-80), veryHigh (80-95), unsafeMax (100th). Accepts a serialized signed transaction OR a list of account keys. lookbackSlots is tunable.",
+      "auth": "Helius API key",
+      "rate_limits": "Per plan RPC rate limit",
+      "cost": "Included in plan credits"
+    },
+    {
+      "name": "Solana getRecentPrioritizationFees (native RPC)",
+      "base_url_or_pkg": "Any Solana RPC; params: [[account_pubkeys]]",
+      "what_it_gives": "Per-slot minimum prioritization fee for the last 150 slots, filtered to the supplied accounts. This is how you read a LOCAL fee market. Passing [] gives the global market and is near-useless for sniping.",
+      "auth": "Depends on provider",
+      "rate_limits": "Provider-dependent",
+      "cost": "Free on public RPC; counts against credits on paid"
+    },
+    {
+      "name": "Nozomi (Temporal)",
+      "base_url_or_pkg": "http://{ewr1,fra2,ams1,lon1,lax1,tyo1,sgp1,pit1}.nozomi.temporal.xyz ; SDK github.com/temporalxyz/nozomi-sdk ; docs use.temporal.xyz/nozomi/transaction-submission",
+      "what_it_gives": "Drop-in sendTransaction URL replacement. 9 global regions: Pittsburgh, Newark, Ashburn, LA, Frankfurt, Amsterdam, London, Tokyo, Singapore. SDK finds optimal endpoint. Claimed p75 of 1 slot.",
+      "auth": "API key",
+      "rate_limits": "Not publicly documented",
+      "cost": "Min tip 0.001 SOL per provider docs (sol-trade-sdk constant says 0.0001 \u2014 sources conflict, trust provider docs). Plan pricing not public."
+    },
+    {
+      "name": "0slot",
+      "base_url_or_pkg": "http://{ny,de2,de1,ams,la,jp}.0slot.trade",
+      "what_it_gives": "Low-RTT transaction relay. Regions: Frankfurt, Amsterdam, New York, Tokyo, Los Angeles.",
+      "auth": "API key",
+      "rate_limits": "Trial/Entry 5 TPS; Intermediate 20 TPS; Advanced 50 TPS",
+      "cost": "Trial free for first week; Entry/Intermediate/Advanced 'contact sales'. Min tip 0.001 SOL on Trial/Entry/Intermediate, 0.0001 SOL on Advanced."
+    },
+    {
+      "name": "NextBlock",
+      "base_url_or_pkg": "http://{ny,fra,ams,dublin,slc,tokyo,sgp,london}.nextblock.io ; proto github.com/nextblock-ag/nextblock-proto",
+      "what_it_gives": "High-speed transaction relay with regional PoPs",
+      "auth": "API key",
+      "rate_limits": "Not publicly documented",
+      "cost": "Minimum 0.001 SOL / 1,000,000 lamports"
+    },
+    {
+      "name": "bloXroute Solana Trader API",
+      "base_url_or_pkg": "https://{ny,germany,amsterdam,uk,la,tokyo,global}.solana.dex.blxrbdn.com",
+      "what_it_gives": "swQoS mode, FastBestEffort mode, bundle support, sandwich protection. 3 tip accounts.",
+      "auth": "Auth header / API key",
+      "rate_limits": "Plan-dependent",
+      "cost": "Min tip 0.0001 SOL per sol-trade-sdk. Plan pricing not public."
+    },
+    {
+      "name": "BlockRazor",
+      "base_url_or_pkg": "HTTP and gRPC regional endpoints (see sol-trade-sdk SWQOS_ENDPOINTS_BLOCKRAZOR / _GRPC)",
+      "what_it_gives": "SWQoS-route relay. Vendor benchmark: 30.12% first-arrival Frankfurt, 39.83% New York.",
+      "auth": "API key",
+      "rate_limits": "Not public",
+      "cost": "Min tip 0.0001 SOL"
+    },
+    {
+      "name": "Astralane",
+      "base_url_or_pkg": "docs astralane.gitbook.io/docs ; plain/binary/QUIC/QUIC-MEV endpoint variants in sol-trade-sdk",
+      "what_it_gives": "Transaction relay with bundle support and mev_protect routing. Tip-budget model: routes the budget, deducts execution cost, rebates eligible surplus.",
+      "auth": "API key",
+      "rate_limits": "Not public",
+      "cost": "Min tip 0.00001 SOL per sol-trade-sdk. Plan pricing not public."
+    },
+    {
+      "name": "Jito ShredStream Proxy",
+      "base_url_or_pkg": "github.com/jito-labs/shredstream-proxy ; docs.jito.wtf/lowlatencytxnfeed/",
+      "what_it_gives": "Raw leader-produced shreds, 100-500ms ahead of Yellowstone gRPC, sub-50ms absolute. Proxy authenticates with a keypair, sends heartbeat, fans shreds to destination IP:ports. You must deshred yourself.",
+      "auth": "Keypair-based auth to Block Engine",
+      "rate_limits": "N/A (push stream)",
+      "cost": "Free client; requires a Jito relationship. Helius equivalent 'Raw Shreds' is $1,000/mo/IP ($800 Pro)."
+    },
+    {
+      "name": "sol-trade-sdk (Rust)",
+      "base_url_or_pkg": "github.com/0xfnzero/sol-trade-sdk ; crates.io/crates/sol-trade-sdk",
+      "what_it_gives": "Unified swqos client for jito, nextblock, zeroslot, temporal, bloxroute, node1, flashblock, blockrazor, astralane, stellium, lightspeed, soyas, speedlanding, helius, solami, lunarlander, glaive. Contains the full minimum-tip table and 10-region endpoint arrays in src/constants/swqos.rs.",
+      "auth": "Per-relay API keys via env",
+      "rate_limits": "N/A",
+      "cost": "Free / open source"
+    },
+    {
+      "name": "Jupiter dynamic-slippage-config",
+      "base_url_or_pkg": "github.com/jup-ag/dynamic-slippage-config",
+      "what_it_gives": "slippage_config.json with exact min/max bps per token category, and token_categories.json mapping mints to solana/stable/lst/bluechip categories. Production config used by Jupiter's /swap endpoint.",
+      "auth": "None",
+      "rate_limits": "N/A",
+      "cost": "Free / open source"
+    }
+  ],
+  "numeric_parameters": [
+    {
+      "param": "cu_price_pumpfun_default_microlamports_per_cu",
+      "value": "500000",
+      "rationale": "MEASURED pump.fun local fee market p75 = 535,714 microlamports/CU; sol-trade-sdk production default is 500,000. Global market floor is only ~2,986, so a generic estimator underprices by ~180x."
+    },
+    {
+      "param": "cu_price_pumpfun_contested_microlamports_per_cu",
+      "value": "2000000 to 4000000",
+      "rationale": "MEASURED landed pump.fun cu_price p75=812,534 and p90=4,000,000 across 272 txs in 14 blocks. To beat 90% of competition you need 4M."
+    },
+    {
+      "param": "cu_price_pumpswap_default_microlamports_per_cu",
+      "value": "80000",
+      "rationale": "MEASURED PumpSwap local fee market p75 = 80,000 microlamports/CU (p50=27,393, p90=150,000). PumpSwap is materially cheaper than the bonding curve."
+    },
+    {
+      "param": "cu_limit_pumpfun_buy_cold_ata",
+      "value": "160000",
+      "rationale": "MEASURED pump.fun bonding-curve whole-tx CU consumed median 153,860, max 251,163. 160k covers median plus ATA creation with margin."
+    },
+    {
+      "param": "cu_limit_pumpfun_buy_warm_ata",
+      "value": "100000",
+      "rationale": "MEASURED min consumed 55,587; sol-trade-sdk asserts buy cu_limit=100,000 in tests."
+    },
+    {
+      "param": "cu_limit_pumpfun_sell",
+      "value": "90000",
+      "rationale": "sol-trade-sdk test asserts sell cu_limit=90,000; sells skip ATA creation."
+    },
+    {
+      "param": "cu_limit_pumpswap_swap",
+      "value": "100000",
+      "rationale": "MEASURED PumpSwap median CU consumed 85,938. Observed bots request 200k-300k and overpay by 2-3x."
+    },
+    {
+      "param": "cu_limit_raydium_ammv4_swap",
+      "value": "150000",
+      "rationale": "MEASURED Raydium AMM v4 median 142,828, max 149,303 \u2014 remarkably tight distribution."
+    },
+    {
+      "param": "cu_limit_raydium_cpmm_swap",
+      "value": "40000",
+      "rationale": "MEASURED Raydium CPMM median only 25,304, max 109,718. Far cheaper than AMM v4."
+    },
+    {
+      "param": "jito_tip_lamports_routine",
+      "value": "10000",
+      "rationale": "MEASURED p50 of tips on landed pump.fun txs that tipped at all (0.00001 SOL). Matches sol-trade-sdk SWQOS_MIN_TIP_JITO."
+    },
+    {
+      "param": "jito_tip_lamports_contested",
+      "value": "1000000",
+      "rationale": "0.001 SOL. MEASURED p75 of landed tips = 100,000 but Helius Sender Max priority buffer requires 1,000,000; also the minimum for NextBlock, Nozomi and 0slot standard tiers. This is the practical floor for a real snipe."
+    },
+    {
+      "param": "jito_tip_lamports_high_conviction",
+      "value": "3000000 to 5000000",
+      "rationale": "MEASURED landed tip p90=3,000,000 and p99=5,000,000 lamports on pump.fun transactions."
+    },
+    {
+      "param": "jito_tip_minimum_absolute_lamports",
+      "value": "1000",
+      "rationale": "Jito's documented hard minimum for bundle acceptance. Below this the bundle is rejected outright."
+    },
+    {
+      "param": "helius_sender_min_tip_sol_max_tier",
+      "value": "0.001",
+      "rationale": "Current Helius Sender docs: entry to the priority tip buffer for top-of-block routing across all pathways. Note the zero-slot blog and sol-trade-sdk both say 0.0002 \u2014 conflicting, treat 0.001 as current."
+    },
+    {
+      "param": "helius_sender_min_tip_sol_swqos_only",
+      "value": "0.000005",
+      "rationale": "Cost-optimized SWQOS-only tier, 5,000 lamports. Use for non-urgent exits."
+    },
+    {
+      "param": "slippage_bps_new_token_first_hour_buy",
+      "value": "1000 (start) / 2000 (hard cap)",
+      "rationale": "Jupiter production config: pump_new_graduate_first_hour range is min 1000 / max 2000 bps. Your cap is the sandwicher's maximum extraction, so never exceed it."
+    },
+    {
+      "param": "slippage_bps_new_token_buy",
+      "value": "300 (start) / 2000 (hard cap)",
+      "rationale": "Jupiter production config: new_token range min 300 / max 2000 bps."
+    },
+    {
+      "param": "slippage_bps_degen_sell",
+      "value": "1000 (start) / 5000 (hard cap)",
+      "rationale": "Jupiter production config: degen_sell min 1000 / max 5000 bps. Sells get the widest band because failing to exit is worse than a bad fill."
+    },
+    {
+      "param": "slippage_bps_bluechip",
+      "value": "50 to 300",
+      "rationale": "Jupiter production config for bluechip and lst categories."
+    },
+    {
+      "param": "slots_per_leader",
+      "value": "4",
+      "rationale": "VERIFIED from live getLeaderSchedule \u2014 slot offsets occur in strict runs of 4 (e.g. 24856-24859, 34256-34259). At 400ms/slot a leader holds ~1.6s. This is the natural retry unit."
+    },
+    {
+      "param": "validators_producing_50pct_of_slots",
+      "value": "40 of 676",
+      "rationale": "MEASURED from live getLeaderSchedule, 432,000 slots/epoch. Top-10 leaders = 24.48%. You cannot colocate next to 40 validators, so fan out across regions instead."
+    },
+    {
+      "param": "submission_fanout_targets",
+      "value": "3 to 4 concurrent relays",
+      "rationale": "BlockRazor's own benchmark shows even the winning provider achieves only 30-40% first-arrival. 1-(1-0.35)^3 \u2248 72% with three uncorrelated paths."
+    },
+    {
+      "param": "jito_rate_limit_req_per_sec_per_ip_per_region",
+      "value": "1",
+      "rationale": "Jito Block Engine default. HTTP 429 on exceed. Multiply by 8 regions for ~8 req/sec effective, or use a paid relay instead."
+    },
+    {
+      "param": "jito_bundle_max_transactions",
+      "value": "5",
+      "rationale": "Jito Block Engine limit. Helius Sender sendBundle allows only 4."
+    },
+    {
+      "param": "jito_auction_tick_ms",
+      "value": "50",
+      "rationale": "Parallel auctions run at 50ms ticks; bundles grouped by account-locking patterns, highest-paying combination wins."
+    },
+    {
+      "param": "guard_program_abort_cu_budget",
+      "value": "1000 to 3000",
+      "rationale": "MEASURED from real sniper guard programs on-chain: 951, 2,747, 2,750, 3,820 CU consumed before aborting with custom error 0x7. Keeps a lost race at ~5,000 lamports base fee."
+    },
+    {
+      "param": "pumpfun_program_failure_rate",
+      "value": "77.1%",
+      "rationale": "MEASURED over n=4,000 recent signatures. Compare Raydium LaunchLab 62.4% and PumpSwap 17.3%. Dominated by intentional guard aborts, not slippage."
+    },
+    {
+      "param": "expected_sandwich_tax_per_attack_sol",
+      "value": "0.0425",
+      "rationale": "Average profit per sandwich attack ($8.67) from the Vpe bot's 1.55M attacks over 30 days. On a 0.5-2 SOL position this is a 2-8% tax \u2014 larger than any reasonable tip budget, making protected routing clearly positive EV."
+    },
+    {
+      "param": "target_p99_signal_to_land_ms",
+      "value": "80",
+      "rationale": "Practitioner target cited for a competitive HFT pipeline (signal detection to landing). Anything above one slot (400ms) means you are systematically losing races."
+    },
+    {
+      "param": "connection_warm_ping_interval_sec",
+      "value": "2 to 5",
+      "rationale": "Helius Sender exposes a /ping endpoint specifically to keep connections warm for apps with submission gaps; a cold TCP+TLS handshake costs a full RTT you cannot recover."
+    },
+    {
+      "param": "leader_schedule_refresh",
+      "value": "once per epoch (~2 days)",
+      "rationale": "getLeaderSchedule only changes at epoch boundaries; 432,000 slots/epoch at 400ms = ~2 days. Cache aggressively, never fetch on the hot path."
+    }
+  ],
+  "traps_and_failure_modes": [
+    "Calling getPriorityFeeEstimate or getRecentPrioritizationFees WITHOUT account keys returns the global market (~2,986 microlamports/CU measured) when the pump.fun local market is 100,002-535,714. This single mistake will make you lose essentially every contested race while believing your fees are correct.",
+    "Using Jito's tip_floor p75 (9,523 lamports measured live) as your tip target. It aggregates all network bundles including arbitrage spam and is 100-500x below what landed competitive pump.fun transactions actually pay (p90 = 3,000,000 lamports). Build your own program-scoped tip percentile tracker.",
+    "Priority fee is charged on the REQUESTED compute unit limit, not the consumed amount. Observed bots request 1,400,000 CU on pump.fun buys that consume 153,860. At 500,000 microlamports/CU that wastes 0.000623 SOL per attempt. Over 1,000 attempts/day that is 0.62 SOL/day burned for nothing.",
+    "Interpreting the 77.1% pump.fun failure rate as slippage failures. It is not \u2014 it is competitors' guard programs aborting cheaply at ~1-3k CU. If you naively raise slippage to 'fix' failures you convert cheap losses into expensive bad fills and hand the difference to sandwichers.",
+    "Setting a wide percentage slippage on a buy. Your slippage cap IS the sandwicher's maximum extraction budget. A 2500 bps degen_buy setting is an explicit offer to lose 25%. Compute an absolute minimum-out from observed reserves instead.",
+    "Broadcasting buys through a public/shared RPC sendTransaction. Solana has no public mempool, so sandwiching requires transaction visibility before execution \u2014 a leaky shared RPC or a colluding validator is exactly that leak. Buys must go through Jito bundles, Helius Sender with mev-protect=true, or a paid private relay.",
+    "Using a fixed Jito tip account. All 8 are hardcoded and widely used; picking one creates an account write-lock hotspot that serializes your transaction against every other bot using the same account. Randomize per transaction.",
+    "Jito's default rate limit is 1 request/second/IP/region. A bot that assumes it can spam sendBundle will get HTTP 429s during exactly the launch windows it cares about. Either fan across regions, use multiple IPs, or route through Helius Sender (50 TPS).",
+    "Using blockSubscribe for detection. It has documented stability problems on high-traffic programs \u2014 connection errors and silently skipped data. You will miss launches and not know it. Use Geyser transactionSubscribe with a program filter.",
+    "Sequential submit-then-fallback instead of concurrent fan-out. Each sequential hop costs a full RTT (~1 slot). By the time your second attempt goes out the mint is 400-800ms old and already sniped.",
+    "Shred-derived signals are PRE-EXECUTION. A transaction visible in shreds may still fail or be reordered. Acting on a shred signal without re-validating against confirmed state means you will sometimes buy into a launch that never actually happened.",
+    "Simulating the transaction before a snipe to size the CU limit. simulateTransaction costs a full network RTT you cannot afford in a race. Precompute per-venue CU constants offline (the measured distributions above are tight enough) and add a fixed margin.",
+    "Provider documentation drift. sol-trade-sdk's minimum-tip constants are already stale for at least two providers (Nozomi listed as 0.0001 when its docs say 0.001; Helius listed as 0.0002 when its docs say 0.001). Re-verify every minimum against live provider docs before production or your transactions will be silently deprioritized.",
+    "Single-provider dependency for detection. Provider incidents happen, and an outage during a launch window is a total loss of that opportunity with no partial credit. Run two independent detection feeds with signature dedup.",
+    "Vendor-published benchmarks (BlockRazor's own study naming BlockRazor the winner; shreder.xyz benchmarking competitor Helius) are marketing. Even BlockRazor's self-favorable numbers show only 30-40% first-arrival. Instrument your own per-provider, per-region win rate and reweight from that.",
+    "Assuming Helius LaserStream is or is not Yellowstone-compatible based on secondary sources \u2014 competitor pages claim it uses a proprietary wire format while Helius's own docs call it a drop-in replacement. This determines whether your existing yellowstone-grpc client code works. Verify against Helius docs directly before architecting around it.",
+    "Paying for Raw Shreds ($800-1,000/mo/IP) before the rest of the pipeline is sub-50ms. The 100-500ms shred advantage is invisible if you then spend 200ms on transaction construction or a cold TLS handshake. Optimize the pipeline first, buy shreds last.",
+    "Not accounting for the 4-slot leader run. If you miss the current leader you have ~1.6 seconds until the next one \u2014 enough time for a region-switched retry. Bots that blindly resubmit to the same endpoint waste that entire window."
+  ]
+}

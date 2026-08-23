@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "degen"
+version = "0.1.0"
+description = "Quantitative memecoin trading system for Solana"
+requires-python = ">=3.11"
+dependencies = [
+  "requests>=2.31", "pandas>=2.0", "numpy>=1.26", "scipy>=1.11",
+  "scikit-learn>=1.3", "lightgbm>=4.0", "duckdb>=1.0", "pyarrow>=14",
+  "typer>=0.9", "python-dotenv>=1.0", "solders>=0.21", "base58>=2.1",
+]
+
+[project.scripts]
+degen = "degen.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

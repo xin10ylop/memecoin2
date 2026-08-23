@@ -127,9 +127,9 @@ Start in `paper`. See [docs/RUNBOOK.md](docs/RUNBOOK.md) before going live.
 ## The model
 
 Once the census reached ~7,100 decision rows the trainer stopped refusing. Fitted
-with purged, embargoed, mint-grouped walk-forward splits, it reaches **30.4%
-precision in the top decile against a 6.13% base rate — a 6.0x lift** — with a
-mean peak multiple of 2.93x in that decile.
+with purged, embargoed, mint-grouped walk-forward splits, it reaches **32.2%
+precision in the top decile against a 5.95% base rate — a 6.65x lift** — with a
+mean peak multiple of 2.83x in that decile.
 
 Two feature groups were excluded deliberately even though both cost measured
 performance: raw price levels (which correlate with a ratio label only because
@@ -139,11 +139,12 @@ collector's polling schedule rather than the market). Details in
 
 ## Honest status
 
-The strategy backtests at **+90% ROI over 69 trades, 60.9% win rate, profit
-factor 7.3**, and survives having its three best trades deleted. That is
+The strategy backtests at **+94% ROI over 99 trades, 64.6% win rate, profit
+factor 9.9**, and after deleting its three best trades still returns +10.3% per
+trade. That is
 encouraging and it is **not** evidence of a durable edge:
 
-- 69 trades from a few hours of one day, in one market regime.
+- 99 trades from a few hours of one day, in one market regime.
 - **Nobody has published a profitable memecoin selection strategy.** The best
   published result — a model-guided selection at 76% precision — still loses
   26.64% on average. A repository claiming better deserves proportionate

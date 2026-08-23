@@ -66,6 +66,7 @@ class RuleWeights:
     holders: float = 1.6
     holder_growth: float = 2.0
     initial_mcap: float = 1.4
+    deployer: float = 0.9
     liquidity: float = 1.2
     liquidity_growth: float = 1.8
     buy_pressure: float = 1.5
@@ -133,6 +134,13 @@ class RuleScorer:
         # whale providing the entire float. Inverted ramp.
         t["organic_retail"] = w.organic_retail * (1.0 - _ramp(lph, 300, 2_500)) if lph is not None else 0.0
         t["fresh_dev"] = w.fresh_dev * (1.0 if (dev_mints is not None and dev_mints <= 3) else 0.0)
+        # Only contributes when the creator actually has a track record; an
+        # unknown deployer scores zero rather than being penalised or rewarded.
+        if f.get("dev_known"):
+            ds = _num(f.get("dev_score")) or 0.0
+            t["deployer"] = w.deployer * max(-1.0, min(1.0, ds))
+            if ds < -0.3:
+                notes.append("creator's prior launches underperform")
 
         # --- penalties ---
         if dev_mints is not None and dev_mints > 100:
@@ -152,7 +160,8 @@ class RuleScorer:
         raw = sum(t.values())
         max_pos = (w.holders + w.holder_growth + w.liquidity + w.liquidity_growth +
                    w.buy_pressure + w.volume_imbalance + w.price_momentum +
-                   w.trade_activity + w.organic_retail + w.fresh_dev + w.initial_mcap)
+                   w.trade_activity + w.organic_retail + w.fresh_dev + w.initial_mcap +
+                   w.deployer)
         score = max(0.0, min(1.0, raw / max_pos))
         return ScoreResult(score=score, passed=score >= self.threshold, terms=t, notes=notes, source="rules")
 

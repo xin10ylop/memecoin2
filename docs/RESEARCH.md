@@ -150,7 +150,8 @@ measured cost stack.
 | buy everything | 390 | 8.7% | −1.35% | 0.985x | 0.89 |
 | holders ≥ 20 | 58 | 41.4% | +28.99% | 1.278x | 2.69 |
 | score ≥ 0.55 + safety gate | 44 | 63.6% | +87.0% | 1.870x | 5.43 |
-| **+ market-cap gate, corrected fees, dump detector** | **69** | **60.9%** | **+89.9%** | **2.009x** | **7.31** |
+| + market-cap gate, corrected fees, dump detector | 69 | 60.9% | +89.9% | 2.009x | 7.31 |
+| **+ trained model, deployer reputation** | **99** | **64.6%** | **+94.1%** | **1.885x** | **9.90** |
 
 The final row is the current configuration. It carries the corrected 1.25%/side
 pump.fun fee, which by itself cost about 13 percentage points of ROI relative to
@@ -161,13 +162,13 @@ carries it:
 
 | | total PnL | mean/trade | win% |
 |---|---|---|---|
-| all trades | +20.79 SOL | +0.301 | 60.9% |
-| dropping the best trade | +11.10 SOL | +0.163 | 60.3% |
-| dropping the best 2 | +3.82 SOL | +0.057 | 59.7% |
-| dropping the best 3 | +3.11 SOL | +0.047 | 59.1% |
+| all trades | +33.13 SOL | +0.335 | 64.6% |
+| dropping the best trade | +20.49 SOL | +0.209 | 64.3% |
+| dropping the best 2 | +10.85 SOL | +0.112 | 63.9% |
+| dropping the best 3 | +9.92 SOL | +0.103 | 63.5% |
 
 It survives the deletion of its three best trades and the median trade is
-**1.08x**, so this is not a single-outlier artefact — which an earlier, cruder
+**1.15x**, so this is not a single-outlier artefact — which an earlier, cruder
 rule *was* (93.9% of its profit came from one token).
 
 ## 6. Comparison against the published literature
@@ -207,6 +208,29 @@ disagreement is recorded rather than resolved by preference.
 
 **Disagrees with our data — recorded, not adopted:**
 
+- *Deployer reputation gives a 35-110x lift* (an "elite tier" graduating at 71%
+  against a 0.63% base). Implemented and measured **walk-forward** on our own
+  census — a creator scored only from launches that happened strictly before the
+  one being judged — the lift is **2.09x**: a 10.65% success rate in the top
+  tercile against a 5.11% base, with the bottom tercile at 1.18%. Real and worth
+  having, especially for *avoiding* bad creators (a 9x spread between terciles),
+  but an order of magnitude below the published claim. The gap is almost
+  certainly the selection effect the source itself flagged: the elite tier was
+  chosen by the same statistic then quoted for it. Adopted at its measured
+  strength, not its advertised one.
+- *Liquidity accumulation speed is the strongest predictor, and trade count
+  "mostly measures bots and wash trades".* Our data inverts this. Trade count is
+  the **strongest** single predictor we have — bottom quartile 0.85%, top
+  quartile 21.72%, a 3.0x lift — while `sol_per_trade` is non-monotonic (3.7%,
+  11.5%, 10.3%, 3.6% across quartiles) and liquidity-per-trade runs the *wrong*
+  way entirely (14.9% down to 1.7%). Among tokens with above-median trade count,
+  *lower* SOL per trade does better (15.9% vs 8.0%). Many small trades beats few
+  large ones, which is the same "real people are arriving" finding as everything
+  else here. The likely reconciliation is that the published claim concerns
+  lifetime graduation measured on vSOL accumulation, while ours concerns a
+  30-minute forward return from a checkpoint 60-300 seconds in — different
+  question, different answer. Kept as tree features, deliberately *not* added as
+  a linear scorer term given the non-monotonicity.
 - *A Telegram link lifts graduation 8.94x.* In our census the lift is **0.50x**
   for a 2x outcome and 0.65x for reaching $10k liquidity. Our n for tokens with
   a Telegram link is only 24, so this is weak evidence against a much larger
@@ -239,15 +263,15 @@ evaluated out-of-fold:
 
 | metric | value |
 |---|---|
-| rows / positives | 7,146 / 438 |
-| base rate (peak ≥ 1.5x within 30 min) | 6.13% |
-| top-decile precision | **30.4%** |
-| lift over base rate | **6.00x** |
-| mean peak multiple in the top decile | 2.93x |
+| rows / positives | 7,898 / 470 |
+| base rate (peak ≥ 1.5x within 30 min) | 5.95% |
+| top-decile precision | **32.2%** |
+| lift over base rate | **6.65x** |
+| mean peak multiple in the top decile | 2.83x |
 
-Top features, in importance order: `top_holders_pct`, `s5m_liquidityChange`,
-`dev_mints`, `px_vol`, `liq_accel`, `liquidity`, `s1h_priceChange`, `px_accel`,
-`vol_per_trader`, `hold_slope`, `buy_sell_ratio`, `hold_accel`.
+Top features, in importance order: `s5m_liquidityChange`, `top_holders_pct`,
+`dev_mints`, `liq_accel`, `s1h_priceChange`, `px_vol`, `liquidity`,
+`s5m_priceChange`, `hold_accel`, `px_accel`, `buy_sell_ratio`, `vol_per_trader`.
 
 Two deliberate exclusions, both of which cost measured performance and were made
 anyway:

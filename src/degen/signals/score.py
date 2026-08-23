@@ -189,7 +189,14 @@ class ModelScorer:
 
 class CompositeScorer:
     """Rules always run; the model blends in only when it exists and has
-    demonstrated lift. Both must agree for a trade at full size."""
+    demonstrated lift. Both must agree for a trade at full size.
+
+    Optional evidence sources (smart-money confluence, social attention) are
+    additive *bonuses* rather than blended terms. They can raise conviction on a
+    token the core already likes; they cannot rescue one it does not, because
+    neither has been validated on this system's own data yet and an unvalidated
+    signal should not be able to originate a trade.
+    """
 
     def __init__(
         self,
@@ -197,26 +204,66 @@ class CompositeScorer:
         model_weight: float = 0.5,
         model_dir: str | Path = "models",
         require_both: bool = True,
+        smartmoney: Any = None,
+        social: Any = None,
+        smartmoney_weight: float = 0.15,
+        social_weight: float = 0.10,
     ) -> None:
         self.rules = RuleScorer(threshold=rule_threshold)
         self.model = ModelScorer(Path(model_dir) / "signal_lgbm.txt", Path(model_dir) / "features.json")
         self.model_weight = model_weight if self.model.available else 0.0
         self.require_both = require_both
         self.rule_threshold = rule_threshold
+        self.smartmoney = smartmoney
+        self.social = social
+        self.smartmoney_weight = smartmoney_weight
+        self.social_weight = social_weight
+
+    def _bonuses(self, f: dict[str, Any], terms: dict[str, float], notes: list[str]) -> float:
+        bonus = 0.0
+        mint = f.get("mint")
+        if self.smartmoney is not None and mint:
+            try:
+                c = self.smartmoney.confluence(str(mint))
+            except Exception:
+                c = None
+            # Independent actors, not addresses: a bundle of 19 wallets run by
+            # one operator is one opinion.
+            if c and c.get("available") and c.get("n_clusters", 0) >= 2:
+                v = self.smartmoney_weight * min(1.0, c["n_clusters"] / 4.0)
+                terms["smart_money"] = v
+                notes.append(f"{c['n_clusters']} independent credited actors holding")
+                bonus += v
+        if self.social is not None and mint:
+            try:
+                sf = self.social.features(str(mint), f.get("created_at"))
+            except Exception:
+                sf = None
+            if sf is not None and getattr(sf, "available", False) and sf.score > 0:
+                v = self.social_weight * sf.score
+                terms["social"] = v
+                bonus += v
+        return bonus
 
     def score(self, f: dict[str, Any]) -> ScoreResult:
         r = self.rules.score(f)
         m = self.model.score(f) if self.model.available else None
         if m is None:
-            return r
-        blended = (1 - self.model_weight) * r.score + self.model_weight * m.score
-        passed = blended >= self.rule_threshold
-        if self.require_both:
-            passed = passed and r.passed and m.passed
+            base, source = r.score, "rules"
+            core_pass = r.passed
+        else:
+            base = (1 - self.model_weight) * r.score + self.model_weight * m.score
+            source = "rules+model"
+            core_pass = (r.passed and m.passed) if self.require_both else (base >= self.rule_threshold)
+            r.terms["model_p"] = m.score
+
+        notes = list(r.notes)
+        bonus = self._bonuses(f, r.terms, notes)
+        total = max(0.0, min(1.0, base + bonus))
         return ScoreResult(
-            score=blended,
-            passed=passed,
-            terms={**r.terms, "model_p": m.score},
-            notes=r.notes,
-            source="rules+model",
+            score=total,
+            passed=core_pass and total >= self.rule_threshold,
+            terms=r.terms,
+            notes=notes,
+            source=source + ("+extra" if bonus > 0 else ""),
         )

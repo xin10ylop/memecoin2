@@ -39,8 +39,10 @@ from ..util.timeutil import human_age, now
 
 log = get("degen.live")
 
-CONSIDER_MIN_AGE = 45.0
-CONSIDER_MAX_AGE = 2400.0
+# Bracket the measured peak. Entries outside this window backtested as losing
+# configurations, not merely weaker ones - see features.build.DECISION_AGES.
+CONSIDER_MIN_AGE = 50.0
+CONSIDER_MAX_AGE = 420.0
 
 
 @dataclass

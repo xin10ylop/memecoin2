@@ -73,7 +73,11 @@ round-trips per token, for free, in one call.
 
 ## The strategy
 
-**Entry.** A token is considered at fixed ages (60s, 180s, 300s, 600s, 1800s).
+**Entry.** A token is considered at fixed ages (60s, 120s, 180s, 240s, 300s).
+Those ages are measured rather than chosen: backtesting each in isolation gives
+a clean inverted-U peaking at 180 seconds, with sniping at 30s and entering at
+30 minutes both *losing* money. See
+[when to buy](docs/RESEARCH.md#6-when-to-buy).
 At each checkpoint the system builds features from observations at or before
 that age only, runs a three-stage safety filter, and scores it. Buying requires
 the safety stack to pass and the conviction score to clear its threshold.
@@ -139,12 +143,13 @@ collector's polling schedule rather than the market). Details in
 
 ## Honest status
 
-The strategy backtests at **+94% ROI over 99 trades, 64.6% win rate, profit
-factor 9.9**, and after deleting its three best trades still returns +10.3% per
-trade. That is
+The strategy backtests at **+72% ROI over 78 trades, 61.5% win rate, profit
+factor 6.6**, and after deleting its three best trades still returns +8.0% per
+trade. The 95% confidence interval on expectancy is **[0.052, 0.640] SOL per
+trade** — positive across the whole interval. That is
 encouraging and it is **not** evidence of a durable edge:
 
-- 99 trades from a few hours of one day, in one market regime.
+- 78 trades from a few hours of one day, in one market regime.
 - **Nobody has published a profitable memecoin selection strategy.** The best
   published result — a model-guided selection at 76% precision — still loses
   26.64% on average. A repository claiming better deserves proportionate

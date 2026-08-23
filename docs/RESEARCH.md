@@ -171,7 +171,37 @@ It survives the deletion of its three best trades and the median trade is
 **1.15x**, so this is not a single-outlier artefact — which an earlier, cruder
 rule *was* (93.9% of its profit came from one token).
 
-## 6. Comparison against the published literature
+## 6. When to buy
+
+The research raised a sharp objection to the design: waiting 60-300 seconds may
+filter out bot-only launches, but the median graduating token graduates at 4.4
+minutes, so the window might also be selecting *out* the winners. That is
+testable, so it was tested. Each checkpoint backtested in isolation:
+
+| entry age | trades | win rate | ROI | profit factor | mean/trade ex-top-3 |
+|---|---|---|---|---|---|
+| 30s | 19 | 31.6% | **−4.4%** | 0.81 | −0.087 |
+| 60s | 49 | 65.3% | +26.2% | 3.11 | +0.061 |
+| **180s** | **31** | **67.7%** | **+157.9%** | **26.55** | **+0.115** |
+| 300s | 25 | 48.0% | +24.2% | 2.23 | +0.014 |
+| 600s | 22 | 45.5% | +14.2% | 2.00 | −0.009 |
+| 1800s | 4 | 25.0% | **−9.9%** | 0.23 | −0.127 |
+
+A clean inverted-U in every column, which is far more reassuring than a spike
+would be. **Sniping the mint loses money outright** — at 30 seconds there is
+nothing to measure and the bot is buying at the base rate, where the median
+token never moves. By half an hour the move has already happened. The
+information arrives in between and peaks near three minutes.
+
+Both tails were losing configurations rather than merely weaker ones, so the
+decision ages were narrowed to 60-300s bracketing the peak, and the live
+trader's consideration window with them. The effect on the headline is a
+*reduction* in ROI (94% to 72%) and a substantial improvement in what matters:
+the 95% confidence interval on expectancy per trade moves from [0.002, 0.694]
+to **[0.052, 0.640]**, and the probability that expectancy is positive reaches
+1.000 in bootstrap. Fewer marginal trades, a more reliable edge.
+
+## 7. Comparison against the published literature
 
 A separate research sweep collected what has actually been published. Where it
 agrees with our measurements, confidence goes up; where it disagrees, the
@@ -255,7 +285,7 @@ disagreement is recorded rather than resolved by preference.
   random selection, but still a loss. Any claim to have beaten that, including
   the one in this repository, deserves proportionate scepticism.
 
-## 7. The model
+## 8. The model
 
 With ~7,100 decision rows and 438 positive examples the trainer stopped
 refusing. Fitted with purged, embargoed, mint-grouped walk-forward splits and
@@ -306,7 +336,7 @@ number; the +120.5% ROI is not, and should be read as "the model's ranking is
 useful", not as an expected return. Treating it otherwise is exactly the mistake
 this document keeps warning about.
 
-## 8. What these results are not
+## 9. What these results are not
 
 Stated plainly, because the numbers above are the kind that get over-read:
 

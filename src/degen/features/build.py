@@ -21,10 +21,26 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 import pandas as pd
 
-# Ages (seconds since first pool) at which the bot considers a token. Sniping
-# at T=0 is a coin flip on a dataset where the median token never moves; these
-# checkpoints let it wait for the first evidence that anyone else showed up.
-DECISION_AGES: tuple[int, ...] = (60, 180, 300, 600, 1800)
+# Ages (seconds since first pool) at which the bot considers a token.
+#
+# These are measured, not chosen. Backtesting each checkpoint in isolation on
+# the collected census produces a clean inverted-U in every metric:
+#
+#     entry age    trades   win%     ROI    profit factor
+#        30s          19    31.6%   -4.4%       0.81
+#        60s          49    65.3%  +26.2%       3.11
+#       180s          31    67.7%  +157.9%     26.55
+#       300s          25    48.0%  +24.2%       2.23
+#       600s          22    45.5%  +14.2%       2.00
+#      1800s           4    25.0%   -9.9%       0.23
+#
+# Sniping the mint loses money outright: at 30 seconds there is nothing to
+# measure yet and the bot is buying at the base rate, where the median token
+# never moves. By half an hour the move has happened and what is left is the
+# distribution. The information arrives in between, and peaks near three
+# minutes. The window below brackets that peak and deliberately excludes both
+# tails, which were losing configurations rather than merely weaker ones.
+DECISION_AGES: tuple[int, ...] = (60, 120, 180, 240, 300)
 
 # Optional deployer-reputation book. Injected rather than imported at module
 # scope so feature construction stays usable with no persisted history, and so

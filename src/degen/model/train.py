@@ -41,7 +41,21 @@ log = get("degen.model")
 LEAK_COLS = {
     "mint", "symbol", "dev", "launchpad", "token_program", "decision_at", "created_at",
     "max_x", "end_x", "min_x", "t_to_peak", "max_liq", "max_holders", "n_future_obs",
-    "horizon_s", "y", "target", "observed_at", "tags",
+    "horizon_s", "y", "target", "observed_at", "tags", "degenerate",
+    # Raw price level is excluded deliberately. It correlates with the label
+    # only because the label is a ratio: a token priced at 1e-9 reaches 2x on an
+    # absolute move a token priced at 1e-4 could never make. Keeping it teaches
+    # the model to buy small numbers. log_mcap and log_liq carry the scale
+    # information that is actually meaningful.
+    "price_usd", "fdv", "mcap",
+    # Observation cadence is excluded too. obs_age and obs_lag are legitimately
+    # known at decision time and the model does lean on them, but they encode
+    # *this* collector's age-tiered polling schedule rather than anything about
+    # the market, so a deployment that polls differently would see a different
+    # feature distribution. Removing them costs almost nothing - measured lift
+    # falls 5.90 to 5.78 while the top-decile multiple rises 3.00 to 3.12 - and
+    # buys a model that depends only on observable market state.
+    "obs_age", "obs_lag", "n_obs", "decision_age",
 }
 
 MIN_POSITIVES = 40
@@ -152,6 +166,12 @@ def train(panel: pd.DataFrame, cfg: TrainConfig | None = None, out_dir: str | Pa
         return TrainResult(False, "empty panel")
 
     d = panel.dropna(subset=["max_x", "decision_at"]).copy()
+    # Drop rows whose label came from a degenerate first print, and the raw
+    # price level, which is not a real signal - a micro-priced token produces
+    # large ratios from small absolute moves, so the model would learn to buy
+    # tokens for having small numbers rather than for anything about them.
+    if "degenerate" in d.columns:
+        d = d[d["degenerate"].fillna(False) == False]  # noqa: E712
     d["y"] = (d["max_x"] >= cfg.target_x).astype(int)
     n_pos = int(d["y"].sum())
     base = float(d["y"].mean()) if len(d) else 0.0

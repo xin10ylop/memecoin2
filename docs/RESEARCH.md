@@ -231,7 +231,58 @@ disagreement is recorded rather than resolved by preference.
   random selection, but still a loss. Any claim to have beaten that, including
   the one in this repository, deserves proportionate scepticism.
 
-## 7. What these results are not
+## 7. The model
+
+With ~7,100 decision rows and 438 positive examples the trainer stopped
+refusing. Fitted with purged, embargoed, mint-grouped walk-forward splits and
+evaluated out-of-fold:
+
+| metric | value |
+|---|---|
+| rows / positives | 7,146 / 438 |
+| base rate (peak ≥ 1.5x within 30 min) | 6.13% |
+| top-decile precision | **30.4%** |
+| lift over base rate | **6.00x** |
+| mean peak multiple in the top decile | 2.93x |
+
+Top features, in importance order: `top_holders_pct`, `s5m_liquidityChange`,
+`dev_mints`, `px_vol`, `liq_accel`, `liquidity`, `s1h_priceChange`, `px_accel`,
+`vol_per_trader`, `hold_slope`, `buy_sell_ratio`, `hold_accel`.
+
+Two deliberate exclusions, both of which cost measured performance and were made
+anyway:
+
+- **Raw price level** (`price_usd`, `fdv`, `mcap` as levels). These correlate
+  with the label only because the label is a ratio — a token priced at 1e-9
+  reaches 2x on an absolute move a token priced at 1e-4 could never make.
+  Keeping them teaches the model to buy small numbers. `log_mcap` and `log_liq`
+  carry the scale information that is actually meaningful.
+- **Observation cadence** (`obs_age`, `obs_lag`, `n_obs`). These are legitimately
+  known at decision time and the model leans on them heavily — they were the top
+  two features before removal — but they encode *this* collector's age-tiered
+  polling schedule rather than anything about the market, so a deployment
+  polling differently would see a different distribution. Removing them cost
+  lift 5.90 → 5.78 while the top-decile multiple *rose* 3.00 → 3.12. The edge
+  was never in the sampling artefact.
+
+Adding the model to the rule scorer, in backtest:
+
+| configuration | trades | win% | ROI | expectancy | PF | mean/trade ex-top-3 |
+|---|---|---|---|---|---|---|
+| rules only | 93 | 61.3% | +79.9% | 1.873x | 7.73 | +0.076 |
+| rules + model | 70 | 62.9% | +120.5% | 2.159x | 12.71 | +0.123 |
+
+The model makes the system *more* selective (70 trades rather than 93) and the
+robustness metric improves alongside the headline, which is the result that
+matters — it is not simply chasing the tail harder.
+
+**The important caveat on that table:** the backtest period overlaps the model's
+training data. The purged walk-forward lift of 6.00x is the honest out-of-sample
+number; the +120.5% ROI is not, and should be read as "the model's ranking is
+useful", not as an expected return. Treating it otherwise is exactly the mistake
+this document keeps warning about.
+
+## 8. What these results are not
 
 Stated plainly, because the numbers above are the kind that get over-read:
 
@@ -254,7 +305,10 @@ Stated plainly, because the numbers above are the kind that get over-read:
 5. **Snapshot cadence is 20–60 seconds.** Intra-interval wicks are invisible, so
    stops trigger later and at better prices than they would live. Treat
    reported drawdowns as optimistic.
-6. **No live fills.** Paper and dry modes price against real pool state, but no
+6. **The model's backtest is partly in-sample.** See section 7. The out-of-fold
+   lift is real; the ROI figure that includes the model is not an out-of-sample
+   estimate.
+7. **No live fills.** Paper and dry modes price against real pool state, but no
    real transaction has been landed, so nothing here accounts for failed sends,
    sandwich attacks on entry, or the difference between a quote and a fill.
 

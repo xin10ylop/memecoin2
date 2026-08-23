@@ -124,6 +124,19 @@ system that is quietly wrong should stop, not slow down.
 
 Start in `paper`. See [docs/RUNBOOK.md](docs/RUNBOOK.md) before going live.
 
+## The model
+
+Once the census reached ~7,100 decision rows the trainer stopped refusing. Fitted
+with purged, embargoed, mint-grouped walk-forward splits, it reaches **30.4%
+precision in the top decile against a 6.13% base rate — a 6.0x lift** — with a
+mean peak multiple of 2.93x in that decile.
+
+Two feature groups were excluded deliberately even though both cost measured
+performance: raw price levels (which correlate with a ratio label only because
+small numbers multiply easily) and observation cadence (which encodes this
+collector's polling schedule rather than the market). Details in
+[docs/RESEARCH.md](docs/RESEARCH.md#7-the-model).
+
 ## Honest status
 
 The strategy backtests at **+90% ROI over 69 trades, 60.9% win rate, profit

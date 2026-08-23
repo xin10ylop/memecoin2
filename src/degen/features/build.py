@@ -195,6 +195,14 @@ def features_at(hist: pd.DataFrame, age: float) -> dict[str, Any] | None:
     return f
 
 
+# A first print at or below this is a data artefact, not a tradable price; the
+# ratio it produces is meaningless and inflates every aggregate that touches it.
+MIN_VALID_PRICE = 1e-12
+# Nothing above this is a real tradable outcome for our size, and leaving the
+# tail uncapped lets a single artefact dominate any mean or any model fit.
+MAX_VALID_MULTIPLE = 200.0
+
+
 def label_forward(
     hist: pd.DataFrame,
     age: float,
@@ -208,13 +216,18 @@ def label_forward(
         "horizon_s": horizon_s,
         "n_future_obs": int(len(fut)),
     }
-    if fut.empty or entry_price <= 0:
+    if fut.empty or entry_price <= MIN_VALID_PRICE:
         out.update(max_x=None, end_x=None, min_x=None, t_to_peak=None, max_liq=None)
         return out
     px = pd.to_numeric(fut["price_usd"], errors="coerce").dropna()
     mx = float(px.max())
-    out["max_x"] = mx / entry_price
-    out["end_x"] = float(px.iloc[-1]) / entry_price
+    raw_max = mx / entry_price
+    if raw_max > MAX_VALID_MULTIPLE:
+        # Almost always a near-zero first print rather than a 1000x. Recorded so
+        # it can be inspected, and excluded from anything that averages.
+        out["degenerate"] = True
+    out["max_x"] = min(raw_max, MAX_VALID_MULTIPLE)
+    out["end_x"] = min(float(px.iloc[-1]) / entry_price, MAX_VALID_MULTIPLE)
     out["min_x"] = float(px.min()) / entry_price
     peak_row = fut.loc[px.idxmax()]
     out["t_to_peak"] = float(peak_row["age_s"] - age)

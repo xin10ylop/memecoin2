@@ -12,6 +12,10 @@ from provider marketing:
   PumpSwap AMM median 85,938; Raydium AMM v4 median 142,828.
 * Jito tips: only 12% of landed pump.fun txs tip at all; among tippers the
   distribution is bimodal, p50 10,000 lamports but p90 3,000,000.
+* Venue fees are higher than commonly quoted: the pump.fun bonding curve takes
+  1.25% per side (0.95% protocol + 0.30% creator), and PumpSwap scales 1.25%
+  down to a 0.30% floor with market cap. Published estimates put realistic
+  round-trip friction at 4-6% once slippage and MEV are included.
 
 The important consequence for strategy design: fixed per-transaction cost is
 small (routine entry ~0.0001 SOL) while *proportional* cost - the AMM fee plus
@@ -53,6 +57,11 @@ class CostModel:
     # still burns the base fee and the priority fee.
     fail_rate: float = 0.12
     sol_usd: float = 94.0
+    # Sandwich losses on an unprotected swap run ~3% versus ~0.7% protected.
+    # Charged as an extra proportional cost per side when not using a private
+    # or bundled submission path.
+    mev_loss: float = 0.0
+
 
     def fixed_sol_per_tx(self) -> float:
         cu_price, tip = TIERS[self.tier]
@@ -64,14 +73,43 @@ class CostModel:
         return (total * attempts) / LAMPORTS_PER_SOL
 
     def amm_fee(self) -> float:
-        return {"pumpfun": 0.01, "pumpswap": 0.0025, "raydium": 0.0025}.get(self.venue, 0.0025)
+        """Venue fee per side.
+
+        pump.fun's bonding curve is 1.25%, not the 1% commonly quoted: 0.95%
+        protocol plus a 0.30% creator fee. PumpSwap starts at the same 1.25% and
+        scales down to a 0.30% floor as market cap rises, reaching the floor
+        around 98,240 SOL of market cap; 0.85% is a reasonable blended default
+        for the small-cap range this bot actually trades.
+        """
+        return {
+            "pumpfun": 0.0125,
+            "pumpswap": 0.0085,
+            "raydium": 0.0025,
+            "meteora": 0.0025,
+        }.get(self.venue, 0.0030)
 
     def entry_overhead(self, sol_in: float) -> float:
         """SOL consumed by an entry beyond what reaches the pool."""
-        return self.fixed_sol_per_tx() + sol_in * self.platform_fee
+        return self.fixed_sol_per_tx() + sol_in * (self.platform_fee + self.mev_loss)
 
     def exit_overhead(self, sol_out: float) -> float:
-        return self.fixed_sol_per_tx() + sol_out * self.platform_fee
+        return self.fixed_sol_per_tx() + sol_out * (self.platform_fee + self.mev_loss)
+
+    def breakeven_hit_rate(self, target_x: float, loss_frac: float = 1.0, n_tx: int = 4,
+                           position_sol: float = 0.5) -> float:
+        """Hit rate needed for a target-multiple strategy to break even.
+
+        Published figures for reference, at ~5% round-trip friction with total
+        loss on losers: a 2x target needs 52.5%, 5x needs 21.0%, 10x needs
+        10.5%. This reproduces that arithmetic with the configured cost stack.
+        """
+        friction = n_tx * self.fixed_sol_per_tx() / max(position_sol, 1e-9)
+        friction += 2 * (self.amm_fee() + self.platform_fee + self.mev_loss)
+        net_win = target_x * (1 - friction) - 1.0
+        net_loss = loss_frac + friction
+        if net_win <= 0:
+            return 1.0
+        return float(net_loss / (net_win + net_loss))
 
     def describe(self, position_sol: float) -> dict[str, float]:
         fx = self.fixed_sol_per_tx()

@@ -28,6 +28,7 @@ from ..features.build import features_at
 from ..risk.exit import ExitConfig, Position, evaluate
 from ..risk.manager import RiskConfig, RiskManager
 from ..safety.filters import SafetyConfig, check_local, check_rugcheck
+from ..signals.regime import RegimeState, measure as measure_regime
 from ..signals.score import CompositeScorer
 from ..sim.amm import Pool
 from ..sim.costs import CostModel
@@ -52,6 +53,8 @@ class TraderConfig:
     deep_check: bool = True             # RugCheck before entry
     score_threshold: float = 0.55
     max_watch: int = 800
+    regime_refresh_s: float = 900.0     # re-measure the regime every 15 minutes
+    use_regime: bool = True
     risk: RiskConfig = field(default_factory=RiskConfig)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     exit: ExitConfig = field(default_factory=ExitConfig)
@@ -82,6 +85,8 @@ class LiveTrader:
         self.broker: Broker = self._make_broker()
         self.n_entries = 0
         self.n_exits = 0
+        self.regime = RegimeState()
+        self._regime_at = 0.0
 
     def _make_broker(self) -> Broker:
         m = self.cfg.mode
@@ -97,6 +102,25 @@ class LiveTrader:
 
     def _event(self, kind: str, **kw: Any) -> None:
         self.lake.append(EVENTS, {"t": now(), "kind": kind, "mode": self.cfg.mode, **kw})
+
+    def _refresh_regime(self) -> None:
+        """Scale aggression to conditions. The graduation rate varies by more
+        than an order of magnitude between regimes, so a fixed configuration is
+        wrong most of the time."""
+        if not self.cfg.use_regime or now() - self._regime_at < self.cfg.regime_refresh_s:
+            return
+        self._regime_at = now()
+        try:
+            st = measure_regime(self.lake.con())
+        except Exception as exc:
+            log.warning("regime refresh failed: %s", exc)
+            return
+        if st.n_launches == 0:
+            return
+        if st.band != self.regime.band:
+            log.info("regime change: %s", st.describe())
+        self.regime = st
+        self._event("regime", **{k: v for k, v in st.__dict__.items()})
 
     def _refresh_sol(self) -> None:
         if now() - self._sol_usd_at < self.cfg.sol_usd_refresh_s:
@@ -159,7 +183,8 @@ class LiveTrader:
             return
 
         s = self.scorer.score(feat)
-        if not s.passed:
+        threshold = self.cfg.score_threshold + (self.regime.threshold_delta if self.cfg.use_regime else 0.0)
+        if s.score < threshold:
             return
 
         ok, why = self.risk.can_enter(mint, creator=feat.get("dev"))
@@ -176,6 +201,12 @@ class LiveTrader:
 
         pool = self._pool(last)
         size, why_size = self.risk.size_for(s.score, pool_sol_reserve=pool.sol_reserve if pool else None)
+        if self.cfg.use_regime and size > 0:
+            size = round(size * self.regime.size_mult, 4)
+            if size < self.cfg.risk.min_size_sol:
+                self._event("reject", mint=mint, stage="regime_sizing",
+                            why=f"{self.regime.band} regime scaled size below minimum", score=s.score)
+                return
         if size <= 0:
             self._event("reject", mint=mint, stage="sizing", why=why_size, score=s.score)
             return
@@ -273,6 +304,7 @@ class LiveTrader:
             t0 = now()
             try:
                 self._refresh_sol()
+                self._refresh_regime()
                 self._remember(jupiter.recent())
                 watch = [
                     m for m, h in self.history.items()
@@ -303,9 +335,10 @@ class LiveTrader:
             if self.stop.is_set():
                 break
             s = self.risk.summary()
-            log.info("up=%s watch=%d open=%d entries=%d exits=%d | bankroll=%.4f pnl=%+.4f %s",
+            log.info("up=%s watch=%d open=%d entries=%d exits=%d | bankroll=%.4f pnl=%+.4f | %s %s",
                      human_age(now() - started), len(self.history), len(self.positions),
                      self.n_entries, self.n_exits, s["bankroll_sol"], s["realized_pnl_sol"],
+                     self.regime.band,
                      f"HALTED({s['halt_reason']})" if s["halted"] else "")
 
     def run(self) -> None:

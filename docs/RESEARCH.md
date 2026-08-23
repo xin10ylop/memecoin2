@@ -145,28 +145,93 @@ Backtested on 28,529 collected snapshots covering 1,210 tokens, with AMM fills
 against reconstructed pool reserves, 3-second execution latency, and the full
 measured cost stack.
 
-| strategy | trades | win% | ROI | expectancy | PF | P(exp>0) |
-|---|---|---|---|---|---|---|
-| buy everything | 390 | 8.7% | −1.35% | 0.985x | 0.89 | 0.365 |
-| holders ≥ 20 | 58 | 41.4% | +28.99% | 1.278x | 2.69 | 0.660 |
-| score ≥ 0.55, no safety gate | 70 | 62.9% | +77.4% | 1.831x | 7.52 | 0.995 |
-| **score ≥ 0.55 + safety gate** | **44** | **63.6%** | **+87.0%** | **1.870x** | **5.43** | **0.977** |
+| strategy | trades | win% | ROI | expectancy | PF |
+|---|---|---|---|---|---|
+| buy everything | 390 | 8.7% | −1.35% | 0.985x | 0.89 |
+| holders ≥ 20 | 58 | 41.4% | +28.99% | 1.278x | 2.69 |
+| score ≥ 0.55 + safety gate | 44 | 63.6% | +87.0% | 1.870x | 5.43 |
+| **+ market-cap gate, corrected fees, dump detector** | **69** | **60.9%** | **+89.9%** | **2.009x** | **7.31** |
+
+The final row is the current configuration. It carries the corrected 1.25%/side
+pump.fun fee, which by itself cost about 13 percentage points of ROI relative to
+the same strategy priced at the commonly quoted 1%.
 
 Robustness of the headline strategy — profit is meaningless if one trade
 carries it:
 
 | | total PnL | mean/trade | win% |
 |---|---|---|---|
-| all trades | +11.08 SOL | +0.252 | 63.6% |
-| dropping the best trade | +2.13 SOL | +0.050 | 62.8% |
-| dropping the best 2 | +1.52 SOL | +0.036 | 61.9% |
-| dropping the best 3 | +0.96 SOL | +0.023 | 61.0% |
+| all trades | +20.79 SOL | +0.301 | 60.9% |
+| dropping the best trade | +11.10 SOL | +0.163 | 60.3% |
+| dropping the best 2 | +3.82 SOL | +0.057 | 59.7% |
+| dropping the best 3 | +3.11 SOL | +0.047 | 59.1% |
 
 It survives the deletion of its three best trades and the median trade is
-**1.11x**, so this is not a single-outlier artefact — which an earlier, cruder
+**1.08x**, so this is not a single-outlier artefact — which an earlier, cruder
 rule *was* (93.9% of its profit came from one token).
 
-## 6. What these results are not
+## 6. Comparison against the published literature
+
+A separate research sweep collected what has actually been published. Where it
+agrees with our measurements, confidence goes up; where it disagrees, the
+disagreement is recorded rather than resolved by preference.
+
+**Agrees, and we adopted it:**
+
+- *Initial market cap is the strongest single predictor.* A survival analysis of
+  832,941 launches reports it as the dominant covariate (Cox HR 4.51). Tested
+  on our census it replicates cleanly and — the useful part — is nearly
+  uncorrelated with liquidity (r = 0.06), so it is independent evidence. Our
+  sweep: 8.7% base 2x rate becomes 14.7% above $3k, 24.3% above $5k, 35.1%
+  above $7.5k. Adopted as a $5k floor plus a graded score term.
+- *Venue fees are higher than commonly quoted.* pump.fun's bonding curve takes
+  1.25% per side (0.95% protocol + 0.30% creator), not the 1% usually cited,
+  and PumpSwap scales 1.25% down to a 0.30% floor with market cap. Our cost
+  model was wrong and has been corrected; the correction cost the headline
+  backtest about 13 percentage points of ROI, which is the point of doing it.
+- *Break-even hit rates.* At ~5% round-trip friction with total loss on losers,
+  published figures are 52.5% for a 2x target, 21.0% for 5x, 10.5% for 10x. Our
+  independent cost model reproduces 52.0%, 20.9% and 10.5% — a genuine
+  cross-check of the fee stack. It also quantifies the stop: cutting the loss
+  to −45% instead of a total loss roughly halves each figure (5x target needs
+  12.0%, not 20.9%).
+- *A 4-sigma dump detector is worth having.* Marino et al. find at least one
+  4-sigma dump event in 92.22% of tokens with ≥30 swaps. Implemented as a
+  Shewhart control chart on log returns; in the backtest it now accounts for 5
+  of 69 exits, firing on the coordinated sell rather than waiting for the
+  trailing stop.
+- *The graduation rate is a regime variable, not a constant.* Measured values
+  range from 0.198% to 6.7% across periods — a factor of thirty. This is why
+  `signals/regime.py` measures conditions continuously and scales size,
+  concurrency and selectivity, rather than shipping one fixed configuration.
+
+**Disagrees with our data — recorded, not adopted:**
+
+- *A Telegram link lifts graduation 8.94x.* In our census the lift is **0.50x**
+  for a 2x outcome and 0.65x for reaching $10k liquidity. Our n for tokens with
+  a Telegram link is only 24, so this is weak evidence against a much larger
+  study, and the outcome definitions differ (graduation vs our liquidity proxy)
+  as do the periods. Not adopted, not dismissed — flagged for retesting once
+  the census is larger.
+
+**Context that should temper any enthusiasm:**
+
+- Solidus Labs flags **98.6%** of ~7M pump.fun tokens as rug or pump-and-dump;
+  only ~97k ever held more than $1,000 of liquidity.
+- CoinGecko's 18.67M-token study finds **68.67%** record their last trade on
+  launch day and only **4.55%** are still trading after 90 days.
+- **21.4%** of pre-migration pump.fun transactions are wash trades, so raw
+  volume features should be discounted by roughly a fifth.
+- Of migrated tokens, only **5.20%** never trade below their migration price;
+  60.26% are below 0.2x of it within twenty minutes.
+- Median Solana memecoin hold time has collapsed to **100 seconds**.
+- Most importantly: **nobody has published a profitable memecoin selection
+  strategy.** The best published result, a model-guided top-100 selection at 76%
+  precision, still loses 26.64% on average — better than the 60.71% loss from
+  random selection, but still a loss. Any claim to have beaten that, including
+  the one in this repository, deserves proportionate scepticism.
+
+## 7. What these results are not
 
 Stated plainly, because the numbers above are the kind that get over-read:
 

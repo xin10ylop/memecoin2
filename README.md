@@ -126,11 +126,15 @@ Start in `paper`. See [docs/RUNBOOK.md](docs/RUNBOOK.md) before going live.
 
 ## Honest status
 
-The strategy backtests at **+87% ROI over 44 trades, 63.6% win rate, profit
-factor 5.4**, and survives having its three best trades deleted. That is
+The strategy backtests at **+90% ROI over 69 trades, 60.9% win rate, profit
+factor 7.3**, and survives having its three best trades deleted. That is
 encouraging and it is **not** evidence of a durable edge:
 
-- 44 trades from ~4 hours of one day, in one market regime.
+- 69 trades from a few hours of one day, in one market regime.
+- **Nobody has published a profitable memecoin selection strategy.** The best
+  published result — a model-guided selection at 76% precision — still loses
+  26.64% on average. A repository claiming better deserves proportionate
+  scepticism, including from its author.
 - The 95% CI on expectancy per trade is **[0.002, 0.694] SOL** — the lower bound
   is barely above zero.
 - Several rule variants were tried against the same data and the best reported;

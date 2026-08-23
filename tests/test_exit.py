@@ -96,3 +96,40 @@ def test_no_decision_on_a_closed_position():
     pos = _pos()
     pos.remaining_frac = 0.0
     assert evaluate(pos, 100.0, 20_000.0, 10, CFG) is None
+
+
+# ---------------- dump detection ----------------
+
+def test_dump_detector_fires_on_a_coordinated_sell():
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=6)
+    # Calm drift builds a tight variance estimate, then a violent leg down.
+    path = [1.0, 1.01, 1.005, 1.02, 1.015, 1.03, 1.025, 1.04, 1.035, 0.72]
+    sells, _ = _drive(path, cfg=cfg)
+    assert sells and sells[-1][2] == "dump_detected"
+
+
+def test_dump_detector_ignores_ordinary_volatility():
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=6)
+    path = [1.0, 1.3, 0.9, 1.4, 0.95, 1.5, 1.0, 1.6, 1.1, 1.45]
+    sells, _ = _drive(path, cfg=cfg)
+    assert all(s[2] != "dump_detected" for s in sells)
+
+
+def test_dump_detector_needs_a_minimum_absolute_move():
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=5, dump_min_move=0.5)
+    path = [1.0, 1.001, 1.002, 1.001, 1.003, 1.002, 1.004, 0.80]
+    sells, _ = _drive(path, cfg=cfg)
+    assert all(s[2] != "dump_detected" for s in sells)
+
+
+def test_dump_detector_can_be_disabled():
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=6, dump_detect=False)
+    path = [1.0, 1.01, 1.005, 1.02, 1.015, 1.03, 1.025, 1.04, 1.035, 0.72]
+    sells, _ = _drive(path, cfg=cfg)
+    assert all(s[2] != "dump_detected" for s in sells)
+
+
+def test_dump_detector_is_silent_before_enough_observations():
+    cfg = ExitConfig(hard_stop_x=0.01, time_stop_s=1e9, dump_min_obs=20)
+    sells, _ = _drive([1.0, 1.01, 1.02, 0.5], cfg=cfg)
+    assert all(s[2] != "dump_detected" for s in sells)

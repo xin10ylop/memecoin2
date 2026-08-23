@@ -196,7 +196,16 @@ money printer. What it is *not*:
   entry are unmodelled.
 
 Re-run `degen validate` as the census grows. It is the only command whose output
-means anything. That is
+means anything — and note that the estimate has already drifted from +23.1% on
+one split to roughly +11% on a later, larger one. Down is the usual direction.
+
+**A worked example of why to distrust good numbers.** A promising second
+archetype — market cap over $100k with fewer than 20 holders — showed a 53% 5x
+rate at 27x lift. Backtested with the liquidity floor removed it reports 81%
+out-of-sample ROI at a profit factor of 50. It is entirely fake: that band's
+median pool is **$43**, a 0.5 SOL exit is 109% of it, and the repeated ~10x
+peaks are the bonding curve's own arithmetic rather than anything anyone traded.
+The full autopsy is in [docs/RESEARCH.md](docs/RESEARCH.md#12-the-second-archetype-and-why-it-is-closed). That is
 encouraging and it is **not** evidence of a durable edge:
 
 - The whole census is a few hours of one day, in one market regime. The

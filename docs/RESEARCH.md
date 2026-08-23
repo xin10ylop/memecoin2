@@ -483,7 +483,61 @@ instead of a flat share-of-pool rule.
 **All of the above is in-sample.** Section 9 is what happened when the resulting
 configuration met data it had not been fitted to.
 
-## 12. What these results are not
+## 12. The second archetype, and why it is closed
+
+A recall analysis showed the gate catching only 46% of 5x winners and 2 of 13
+twenty-baggers, so the obvious question was whether a second kind of winner
+exists that the rule is structurally blind to. One candidate looked spectacular:
+
+| segment | n | 5x rate | lift | median peak |
+|---|---|---|---|---|
+| all tokens | 3,816 | 1.97% | 1.0x | 1.00 |
+| gate passes | 280 | 13.57% | 6.9x | 1.89 |
+| **mcap ≥ $100k and holders < 20** | **30** | **53.33%** | **27.1x** | **8.91** |
+
+It is not real, and the way it fails is instructive.
+
+**None of the 30 pass the safety filter — 0 of 30.** Twenty of them have a single
+wallet holding 100% of supply. The band's *median pool is $43* against a median
+$5,050 valuation, so a 0.5 SOL exit is 109% of the entire pool. And the peaks
+repeat suspiciously: CATDET 10.1x, LOCKIN 10.0x, BALD 10.0x, LEEK 10.0x,
+CYBERCAT 9.6x three times, CYBERDOGE 9.6x — all with 1–2 holders and ~$1,550 of
+liquidity. That is not eight discoveries, it is the pump.fun bonding curve's own
+deterministic price progression as the first few buys arrive. The two 119x
+tokens have 95% of supply in one wallet.
+
+Backtested with the liquidity floor removed, this band reports **81% out-of-sample
+ROI at a profit factor of 50**. That is the most dangerous number this project
+produced, and it is pure AMM arithmetic on a pool containing $43. It is the
+strongest available argument for auditing individual trades instead of reading
+summary statistics.
+
+**The adjacent, genuinely tradeable idea also fails.** Market-cap-to-liquidity
+between 5 and 20 shows a 42.7% 2x rate against 5.7% for the bulk, on real
+$7–8k pools. Added to the gate it *reduces* out-of-sample ROI from 10.5% to
+5.3% and collapses the sample to 18 trades. It slices the population; it does
+not select within it.
+
+**One change was made and reverted on evidence.** Rejecting on a ratio above 35x
+seemed obviously correct. Measured on a held-out window it removed four trades —
+all with $9k–$292k liquidity, all full size, collectively profitable — because
+the $43 pools were already excluded by the plain liquidity floor. The ratio is
+now a feature and a warning, not a reject.
+
+**Why the gate misses what it misses.** Of the 37 5x+ winners it rejected:
+
+| blocked by | share of misses |
+|---|---|
+| buy/sell < 0.55 | 70% |
+| holders < 20 | 57% |
+| liquidity < $3,000 | 57% |
+| mcap < $5,000 | 8% |
+
+The buy/sell floor is the most expensive single condition. That is the obvious
+place to look next, and it needs a larger census before a held-out test on a
+loosened threshold would mean anything.
+
+## 13. What these results are not
 
 Stated plainly, because the numbers above are the kind that get over-read:
 
@@ -506,10 +560,14 @@ Stated plainly, because the numbers above are the kind that get over-read:
 5. **Snapshot cadence is 20–60 seconds.** Intra-interval wicks are invisible, so
    stops trigger later and at better prices than they would live. Treat
    reported drawdowns as optimistic.
-6. **The model's backtest is partly in-sample.** See section 7. The out-of-fold
+6. **The out-of-sample estimate is drifting down as data accumulates** — the
+   gate measured +23.1% on one split and roughly +11% on a later, larger one.
+   That is the direction these estimates usually move, and it is the reason the
+   only honest posture is to keep collecting and keep re-measuring.
+7. **The model's backtest is partly in-sample.** See section 7. The out-of-fold
    lift is real; the ROI figure that includes the model is not an out-of-sample
    estimate.
-7. **No live fills.** Paper and dry modes price against real pool state, but no
+8. **No live fills.** Paper and dry modes price against real pool state, but no
    real transaction has been landed, so nothing here accounts for failed sends,
    sandwich attacks on entry, or the difference between a quote and a fill.
 

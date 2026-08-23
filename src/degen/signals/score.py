@@ -67,6 +67,15 @@ class RuleWeights:
     holder_growth: float = 2.0
     initial_mcap: float = 1.4
     deployer: float = 0.9
+    # Launch-metadata socials. Deliberately small. A Kaplan-Meier study of
+    # 832,941 pump.fun launches finds an advertised Telegram channel raises
+    # graduation 1.485% vs 0.166% (8.94x, Cox HR 5.40) and all three socials
+    # together 1.919% vs 0.110% (17.4x), while Twitter alone barely moves it
+    # (HR 1.30) because 63% of launches carry one. Our own census is far too
+    # small to resolve the Telegram effect - 49 tokens, a 1.20x point estimate
+    # with a 95% interval of [4.4%, 21.8%] - so the weight reflects a published
+    # prior held with low confidence, not a measured effect of our own.
+    socials: float = 0.8
     liquidity: float = 1.2
     liquidity_growth: float = 1.8
     buy_pressure: float = 1.5
@@ -136,6 +145,19 @@ class RuleScorer:
         t["fresh_dev"] = w.fresh_dev * (1.0 if (dev_mints is not None and dev_mints <= 3) else 0.0)
         # Only contributes when the creator actually has a track record; an
         # unknown deployer scores zero rather than being penalised or rewarded.
+        # Twitter presence is deliberately not rewarded: it fails to
+        # discriminate in the published data and runs slightly negative in ours.
+        has_tg = bool(f.get("telegram"))
+        has_web = bool(f.get("website"))
+        has_tw = bool(f.get("twitter"))
+        n_soc = sum((has_tg, has_web, has_tw))
+        if has_tg and n_soc == 3:
+            t["socials"] = w.socials
+        elif has_tg:
+            t["socials"] = w.socials * 0.6
+        elif n_soc >= 2:
+            t["socials"] = w.socials * 0.25
+
         if f.get("dev_known"):
             ds = _num(f.get("dev_score")) or 0.0
             t["deployer"] = w.deployer * max(-1.0, min(1.0, ds))
@@ -161,7 +183,7 @@ class RuleScorer:
         max_pos = (w.holders + w.holder_growth + w.liquidity + w.liquidity_growth +
                    w.buy_pressure + w.volume_imbalance + w.price_momentum +
                    w.trade_activity + w.organic_retail + w.fresh_dev + w.initial_mcap +
-                   w.deployer)
+                   w.deployer + w.socials)
         score = max(0.0, min(1.0, raw / max_pos))
         return ScoreResult(score=score, passed=score >= self.threshold, terms=t, notes=notes, source="rules")
 

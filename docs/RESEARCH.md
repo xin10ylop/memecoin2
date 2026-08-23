@@ -261,12 +261,38 @@ disagreement is recorded rather than resolved by preference.
   30-minute forward return from a checkpoint 60-300 seconds in — different
   question, different answer. Kept as tree features, deliberately *not* added as
   a linear scorer term given the non-monotonicity.
-- *A Telegram link lifts graduation 8.94x.* In our census the lift is **0.50x**
-  for a 2x outcome and 0.65x for reaching $10k liquidity. Our n for tokens with
-  a Telegram link is only 24, so this is weak evidence against a much larger
-  study, and the outcome definitions differ (graduation vs our liquidity proxy)
-  as do the periods. Not adopted, not dismissed — flagged for retesting once
-  the census is larger.
+- *A Telegram link lifts graduation 8.94x.* **This was retested as the census
+  grew, and the earlier apparent contradiction was noise.** At n=24 our data
+  showed a 0.50x lift; at n=49 it shows 1.20x, with a 95% interval of
+  [4.4%, 21.8%] that comfortably contains the published effect. Our sample
+  cannot resolve this against a Kaplan-Meier study of 832,941 launches
+  (1.485% vs 0.166% graduation, Cox HR 5.40, log-rank p < 1e-100), and the
+  honest conclusion is that we have no evidence either way. Adopted as a small
+  scorer weight reflecting a published prior held with low confidence.
+
+  Two parts of the same study *do* replicate directionally in our data: all
+  three socials together shows 19.05% versus an 8.54% base (2.23x, n=21, against
+  a published 17.4x), and Twitter presence is **not** discriminative — 0.89x in
+  our data, Cox HR 1.30 in theirs, because 63% of launches carry one. Twitter
+  presence is therefore not rewarded by the scorer at all.
+
+**Where the research changed the design rather than the parameters:**
+
+The measured literature on social feeds is uniformly hostile to using them as an
+entry trigger, and the social module was rewritten around that. Across 10,687
+pump events the price peaks at roughly two minutes; ranked members of tiered
+channels get the signal 1-10 seconds ahead of ordinary members and abnormal
+*sell* volume appears at second 19, so the dump begins while followers are still
+buying. The correlation between a channel's audience size and the resulting pump
+is **−0.162** — a bigger channel is not a better signal. One documented channel
+announced a coin at its peak, making follower profit arithmetically impossible.
+Both best-performing published Solana rug models use zero social features.
+
+So the module now answers "is this promotion fake" and "is this account
+borrowed" rather than "should I buy": a bot-amplification proxy standing in for
+the retired Botometer, and a repurposed-handle check (an old account whose
+crypto posting began two weeks ago after a long silence). Attention breadth
+remains available as a weak confirming input; it can never originate a trade.
 
 **Context that should temper any enthusiasm:**
 

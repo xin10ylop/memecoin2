@@ -2,13 +2,33 @@
 
 What this is for, and what it is honestly worth.
 
-The tradable social signal on a memecoin is not sentiment. Nobody writes
-anything analysable about a token that is four minutes old. The signal is
-**attention arrival rate and who is arriving**: how quickly the contract
-address starts appearing, how many *distinct* accounts post it, and whether any
-of them have a real audience. A contract address going from zero to forty
-distinct posters in ninety seconds is a fact about demand, whatever the posts
-say.
+**The measured literature says social feeds are a disqualifier, not an entry
+trigger, and this module is built on that finding rather than against it.**
+
+Buying at a call has negative expected value, repeatedly measured. Across 10,687
+pump events on 765 coins the price peaks at roughly two minutes and the average
+five-minute maximum gain is 15% on liquid venues; ranked members of tiered
+channels receive the signal 1-10 seconds before ordinary members, and abnormal
+*sell* volume shows up at second 19 - the dump begins while followers are still
+buying. One study documents a channel announcing a coin when the price was
+already at its peak, making follower profit arithmetically impossible. The
+correlation between a channel's audience size and the resulting pump is
+**-0.162**: a bigger channel is not a better signal. Both of the best-performing
+published Solana rug models use zero social features.
+
+So this module exists to answer three questions, none of which is "should I
+buy":
+
+1. **Is the promotion fake?** Bot-amplified mention campaigns are measurable -
+   61% of accounts amplifying a sampled set of promotions were bot-like, and 36%
+   of the promoted projects were fraudulent.
+2. **Is the token's own account borrowed?** An old account that pivoted to crypto
+   two weeks ago after a long silence is a repurposed or hacked handle.
+3. **Is anyone real arriving?** Attention *breadth* - distinct credible accounts
+   rather than volume - as a weak confirming input, never an originating one.
+
+Nobody writes anything analysable about a token that is four minutes old, so
+sentiment is not on the list.
 
 Two structural cautions that shape the design:
 
@@ -343,6 +363,50 @@ class SocialTracker:
         base = math.log1p(weighted) / math.log1p(60.0)
         f.score = float(max(0.0, min(1.0, base * f.breadth * (1.0 - 0.6 * f.bot_ratio))))
         return f
+
+
+# --- disqualifier checks -------------------------------------------------
+
+# An account older than this that only started posting crypto recently, after a
+# long silence, is the classic repurposed-or-hacked handle signature.
+REPURPOSED_MIN_AGE_DAYS = 365.0
+REPURPOSED_MAX_CRYPTO_AGE_DAYS = 14.0
+
+# Bot-amplification proxy, standing in for Botometer, which is no longer
+# available. Any one of these tripping is enough to distrust the promotion.
+BOT_FRESH_ACCOUNT_FRAC = 0.50      # share of engagers created within 90 days
+BOT_FOLLOW_RATIO = 0.10            # followers/following below this reads automated
+BOT_DUPLICATE_TEXT_FRAC = 0.30     # near-identical mention text share
+
+
+def looks_repurposed(account_age_days: float, first_crypto_post_age_days: float,
+                     silence_gap_days: float = 0.0) -> bool:
+    """Old handle, new crypto content, a gap in between."""
+    return (
+        account_age_days >= REPURPOSED_MIN_AGE_DAYS
+        and first_crypto_post_age_days <= REPURPOSED_MAX_CRYPTO_AGE_DAYS
+        and silence_gap_days >= 30.0
+    )
+
+
+def bot_amplification(mentions: list[Mention]) -> dict[str, Any]:
+    """Judge whether a mention set is a manufactured campaign."""
+    if not mentions:
+        return {"flagged": False, "reasons": [], "fresh_frac": 0.0, "dup_frac": 0.0}
+    reasons: list[str] = []
+    fresh = sum(1 for m in mentions if 0 < m.author_age_days < 90) / len(mentions)
+    if fresh > BOT_FRESH_ACCOUNT_FRAC:
+        reasons.append(f"{fresh:.0%} of engagers are accounts under 90 days old")
+    # Near-duplicate text: normalise and count repeats.
+    seen: dict[str, int] = {}
+    for m in mentions:
+        key = " ".join(sorted(set((m.text or "").lower().split())))[:120]
+        seen[key] = seen.get(key, 0) + 1
+    dup = sum(c for c in seen.values() if c > 1) / len(mentions)
+    if dup > BOT_DUPLICATE_TEXT_FRAC:
+        reasons.append(f"{dup:.0%} of mentions are near-duplicate text")
+    return {"flagged": bool(reasons), "reasons": reasons,
+            "fresh_frac": round(fresh, 3), "dup_frac": round(dup, 3)}
 
 
 def extract_contract_addresses(text: str) -> list[str]:

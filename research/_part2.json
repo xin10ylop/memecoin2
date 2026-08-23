@@ -1,4 +1,493 @@
 {
+ "X/Twitter and Telegram alpha as a tradable signal for Solana memecoin trading \u2014 2026 ingestion economics and whether the signal is real": {
+  "topic": "X/Twitter and Telegram alpha as a tradable signal for Solana memecoin trading \u2014 2026 ingestion economics and whether the signal is real",
+  "executive_summary": "INGESTION (a): X's official API moved to pure pay-per-usage in 2026 \u2014 $0.005 per Post read, $0.010 per User read, hard-capped at 3,000,000 Post reads/month before Enterprise (docs.x.com, verbatim). Filtered Stream IS available on pay-per-use (1 connection, 1,000 rules, 1,024-char rules, 250 posts/sec, ~6-7s P99 latency); the sub-second product (Powerstream) is Enterprise-only. Every delivered stream Post is billed at $0.005, so a broad CA-matching rule is financially ruinous. Resources are deduplicated within a 24h UTC window, which is the single biggest cost lever. Third parties are 30-250x cheaper: Sorsa (ex-TweetScout domain) $49/mo for 10K requests at 20 req/s; twitterapi.io $0.15/1K tweets, QPS tiered by credit balance (3/6/10/20); SocialData $0.0002/item, 120 req/min, plus a webhook Monitoring API at ~$5/monitor/month with explicitly non-real-time ~30s delivery; Apify actors $0.15-$0.40/1K tweets. Nitter's public-instance model is dead (real accounts/session tokens now required); twscrape works but needs your own X account pool. Kaito's formerly-free Yaps endpoint now returns Unauthorized and its Open Protocol doc page 404s. Elfa AI is the only vendor I verified that ships trending *contract addresses* by mention count for both Twitter and Telegram (free tier 1,000 credits/mo, 60 RPM; Grow $290/mo, 40K credits, 120 RPM; PAYG/x402 $0.009/credit, x402 at 1,000 RPM). LunarCrush Individual is $90/mo but only 10 req/min and 2,000 req/day \u2014 arithmetically incapable of per-launch polling. Santiment gates real-time API behind Sanbase Max $249/mo (Pro's API data carries a 30-day lag). Moby's moby.trade domain has expired; Alphanomics is showing a maintenance page; ChainEdge publishes no pricing page. For Telegram, Telethon over MTProto is free, sub-second, and the only retail-cost social feed fast enough to matter \u2014 but one account can join at most 500 channels/supergroups (1,000 with Premium), which is the real capacity constraint.\n\nDOES IT WORK (b): The measured literature is uniformly hostile to buying at the call. Dhawan & Putni\u0146\u0161 (355 pumps) find participants join \"despite negative expected returns\" with 65% average price distortion. Xu & Livshits (412 Telegram pumps) estimate admins netted 199.52 BTC (~$1.1M) across 348 events at an aggregate 18% insider return, and document a channel that announced the coin *when the price was already at its peak*, making follower profit arithmetically impossible; they also find views-vs-pump-gain correlation of \u22120.162, i.e. bigger channel does not mean bigger pump. La Morgia et al. show ranked/VIP members receive the signal 1-10 seconds ahead of ordinary members and that abnormal *sell* volume appears at second 19 of the pump \u2014 the dump begins while followers are still buying. Clough & Edwards (10,687 events, 765 coins) measure peak at roughly two minutes, average 5-minute max gain of 15.02% on Binance-class venues vs 790.54% on illiquid ones, and \u221230% relative price one year later. On Solana specifically: the strongest published social result is that advertising a Telegram channel in pump.fun launch metadata raises the fast-regime graduation rate from 0.166% to 1.485% (8.94x, Cox HR 5.40, n=832,941) while advertising a Twitter account barely moves it (0.1486% \u2192 0.2268%, HR 1.30). Both of the best-performing published Solana rug/risk models (MELT, \"Catching the Rug\", 6.4M tokens) use zero social features \u2014 on-chain behavior alone. No published work I could find establishes predictive value for \"first mention velocity\" on memecoins; the closest honest evidence (Alizadeh et al.) finds a \u22656-hour lag on majors only, and the YouTube finfluencer study finds aggregate video counts Granger-cause price but *top* finfluencers' videos do not. Coordinated bot amplification is real and measurable: 61% of accounts retweeting NFT promotion tweets were bot-like at Botometer t=0.43, and 36% of promoted projects were fraudulent \u2014 but Botometer itself is no longer usable, so you must build your own classifier. Verdict: X mention data is a *disqualifier* feature (fake-account detection, bot-amplification detection), not an entry trigger. Telegram presence in launch metadata is a legitimate weak prior. Paid \"KOL alpha\" products sold to retail are, as far as published measurement goes, unverified marketing.",
+  "findings": [
+   {
+    "claim": "X API v2 in 2026 is pay-per-usage only; there are no published subscription tiers on the official docs",
+    "detail": "docs.x.com/x-api/getting-started/pricing states verbatim: 'The X API uses pay-per-usage pricing. No subscriptions\u2014pay only for what you use.' Read prices per resource returned: Posts $0.005, User $0.010, DM Event $0.010, Following/Followers $0.010, List $0.005, Space $0.005, Like/Mute/Block $0.001. Writes per request: Post:Create $0.015, Post:Create(with URL) $0.200, Trends $0.010, Counts:Recent $0.005, Counts:All $0.010. Webhook events billed per delivered event (post.create $0.005). 'Owned Reads' (your own app's own data) are $0.001/resource. Third-party blogs (twitterapi.io, xpoz, socialcrawl) claim legacy Basic $200/mo and Pro $5,000/mo still exist for grandfathered subscribers and that new signups cannot buy them \u2014 that claim does NOT appear on the official docs and should be treated as unverified.",
+    "confidence": "high",
+    "actionable_for_bot": "Budget in per-resource units, not seats. A per-launch social check of 1 profile + 20 mentions costs $0.010 + $0.100 = $0.11 on the official API. At 200 qualifying launches/day that is $22/day / ~$660/mo \u2014 30x what twitterapi.io or SocialData cost for identical data.",
+    "source_url": "https://docs.x.com/x-api/getting-started/pricing"
+   },
+   {
+    "claim": "The pay-per-usage plan is capped at 3,000,000 Post reads per monthly billing cycle, not 2,000,000",
+    "detail": "Official docs note, verbatim: 'Pay-per-usage plans are capped at 3 million Post reads per monthly billing cycle. If you need higher volume, upgrade to an Enterprise plan.' At $0.005/read that is a $15,000/month ceiling. Multiple 2026 blog posts state a 2,000,000 cap (~$10,000/mo) \u2014 those are stale or wrong. Enterprise pricing is not published anywhere official; the widely-repeated '~$42,000/month' figure is third-party hearsay and I found no primary source for it.",
+    "confidence": "high",
+    "actionable_for_bot": "You will never approach 3M reads if you gate reads behind the on-chain filter. Treat the cap as a non-issue and the '$42K enterprise' number as unverifiable marketing folklore when someone quotes it at you.",
+    "source_url": "https://docs.x.com/x-api/getting-started/pricing"
+   },
+   {
+    "claim": "Resources are deduplicated within a 24-hour UTC window \u2014 re-reading the same Post or user the same day is free",
+    "detail": "Verbatim: 'All resources are deduplicated within a 24-hour UTC day window... requesting the same resource again within that window will not incur an additional charge... The deduplication window resets at midnight UTC.' Marked a 'soft guarantee' with outage edge cases.",
+    "confidence": "high",
+    "actionable_for_bot": "Poll the same KOL profile or the same mention set as often as you like within a UTC day at zero marginal cost. Structure any monitoring loop to re-read rather than to search-with-new-parameters, since new parameters return new (billable) resources.",
+    "source_url": "https://docs.x.com/x-api/getting-started/pricing"
+   },
+   {
+    "claim": "Filtered Stream IS available on pay-per-use in 2026, with ~6-7 second P99 latency; the low-latency product is Enterprise-gated",
+    "detail": "docs.x.com/x-api/posts/filtered-stream/introduction, access-levels table: Pay-per-use gets 1,000 rules per project, 1,024-char rules, 1 connection, core operators; Enterprise gets 25,000+ rules, 2,048 chars, multiple connections, and the semantic 'embedding:' operator. Verbatim note: 'Filtered Stream prioritizes data hydration and delivery, with approximately 6-7 seconds of P99 latency.' Keep-alive is a blank line every 20 seconds; reconnect if nothing arrives for 20s. Powerstream (docs.x.com/x-api/powerstream/introduction) is the low-latency alternative \u2014 1,000 rules, 2,048 chars, local-datacenter option \u2014 and is verbatim 'a premium offering available under select Enterprise plans.'",
+    "confidence": "high",
+    "actionable_for_bot": "6-7s P99 is 16-19 Solana slots (I measured 359-375 ms/slot live on mainnet-beta via getRecentPerformanceSamples). Anyone with a scraping path or an Enterprise Powerstream feed acts before you. Do not architect an entry trigger on Filtered Stream; use it for post-hoc labelling and disqualification.",
+    "source_url": "https://docs.x.com/x-api/posts/filtered-stream/introduction"
+   },
+   {
+    "claim": "Exact X API rate limits per endpoint (2026)",
+    "detail": "From docs.x.com/x-api/fundamentals/rate-limits: GET /2/tweets/search/recent 450/15min per app, 300/15min per user, 100 max results, 512-char query, last 7 days, available to all developers. GET /2/tweets/search/all 1/sec and 300/15min per app, 500 max results, 1,024-char query, back to March 2006, 'available to pay-per-use and Enterprise customers'. GET /2/tweets/search/stream 50/15min, 1 connection, 1,000 rules, 250 posts/sec. POST /2/tweets/search/stream/rules 100/15min. GET /2/users/by/username/:username 300/15min per app. GET /2/users/:id/followers 300/15min. GET /2/tweets 3,500/15min per app. Headers: x-rate-limit-limit / -remaining / -reset.",
+    "confidence": "high",
+    "actionable_for_bot": "300 user lookups per 15 min = 1,200/hour is your hard ceiling for account-age checks on the official API. Sorsa's 20 req/s (72,000/hour) or twitterapi.io's 20 QPS at 50,000+ credits are ~60x more headroom for the same job.",
+    "source_url": "https://docs.x.com/x-api/fundamentals/rate-limits"
+   },
+   {
+    "claim": "twitterapi.io: $0.15/1K tweets, $0.18/1K users, QPS gated by credit balance",
+    "detail": "Pricing page: 'Tweets: $0.15 per 1K tweets', 'Profiles: $0.18 per 1K users', 'Followers/Following: from $0.01 per 1K, tiered', 'Follower IDs: from $0.0045 per 1K, tiered'. '1 USD = 100,000 Credits'. 'Minimum $0.00015 (15 Credits) per API call'. 'Pay as you go, no minimum spend required'; 'Recharged credits never expire'; bonus credits valid 30 days. /qps-limits page: free users 1 request per 5 seconds; paid QPS by balance \u2014 1,000+ credits = 3 QPS, 5,000+ = 6 QPS, 10,000+ = 10 QPS, 50,000+ = 20 QPS. 75+ endpoints claimed.",
+    "confidence": "high",
+    "actionable_for_bot": "Cheapest verified per-tweet rate. Note the QPS ladder is balance-gated, not plan-gated: park $500 (50,000 credits) to unlock 20 QPS. Per-launch check (1 profile + 20 mentions) \u2248 $0.0032; 200 launches/day \u2248 $19/month.",
+    "source_url": "https://twitterapi.io/qps-limits"
+   },
+   {
+    "claim": "SocialData.tools: $0.0002 per item, 120 req/min shared across all endpoints, plus a webhook Monitoring API",
+    "detail": "docs.socialdata.tools/getting-started/pricing: 'Most of our endpoints follow the same pricing structure - $0.0002 per tweet or user profile returned (or $0.2 per 1000 items)'; failed requests are not billed; HTTP 402 when balance is zero. Rate limits page: '120 requests per minute' per API key, shared across endpoints; higher limits free on request. Monitoring API pricing: User monitors billed hourly with volume tiers \u2014 1-10 monitors $0.0069/hr (~$4.99/mo), 11-100 $0.0062/hr (~$4.49/mo), 101-300 $0.0055/hr (~$3.99/mo), 301-500 $0.0048/hr, 501-1000 $0.0042/hr, 1000+ $0.0035/hr (~$2.49/mo). Search monitors: '$0.0002 per tweet delivered' plus '$0.0002 flat, for every execution that delivers nothing'; at 30-second refresh that is 2,880 executions/day = $0.58/day = ~$17.28/mo minimum per search monitor. Monitor types: user tweets, user following, user profile, search.",
+    "confidence": "high",
+    "actionable_for_bot": "The 'user profile' monitor is the single most valuable primitive in this whole document for your use case: it fires a webhook when a monitored account's bio or display name changes \u2014 which is exactly the repurposed/hacked-account signature. At ~$4.99/mo for 10 monitors you can watch a curated KOL set cheaply.",
+    "source_url": "https://docs.socialdata.tools/monitoring/pricing/"
+   },
+   {
+    "claim": "SocialData explicitly disclaims real-time delivery: ~30 seconds typical",
+    "detail": "docs.socialdata.tools/monitoring/introduction: 'We do not promise real-time delivery'; events 'typically arrive within 30 seconds'; the docs explicitly recommend against building systems requiring sub-second responsiveness. Monitors capture only future activity \u2014 'Creating a monitor establishes a baseline from the current state'. Events are deduplicated; monitors pause when balance depletes and auto-resume.",
+    "confidence": "high",
+    "actionable_for_bot": "30 seconds is ~80 Solana slots. This is a labelling/enrichment feed, categorically not an entry trigger. Your existing 60-300s participation-evidence wait is actually well matched to this latency \u2014 feed the webhook into the scoring model, not into an order.",
+    "source_url": "https://docs.socialdata.tools/monitoring/introduction/"
+   },
+   {
+    "claim": "Sorsa (serving the tweetscout.io domain) \u2014 flat per-request X API alternative with crypto-specific scoring endpoints",
+    "detail": "api.sorsa.io: base URL https://api.sorsa.io/v3, auth header 'ApiKey: YOUR_API_KEY', 40 endpoints, 20 req/sec on every plan, claimed 300ms p50, 100 free requests on signup. Plans: Starter 10K req/mo $49, Pro 100K req/mo $199, Enterprise 500K req/mo $899; 'from $0.02 per 1K tweets', 'from $0.01 per 1K profiles', verification checks 'from $0.002 per check'. Crypto section (Section 7, backed by an internal crypto-account database, explicitly not full X coverage): GET /score (numeric crypto influence score), GET /score-changes (7d/30d delta), GET /followers-stats (breakdown into influencers/projects/VCs counts), GET /top-followers, GET /top-following, GET /new-followers-7d, GET /new-following-7d. Section 8: GET /username-to-id/{handle} \u2014 'Unlike usernames, user IDs never change.' The User model returns created_at (ISO 8601 account creation date), followers_count, tweets_count, bio_urls, verified.",
+    "confidence": "high",
+    "actionable_for_bot": "This is the best-fit single vendor: it gives you created_at + stable user_id + a crypto-native influence score + follower-composition in one API at 20 req/s. /followers-stats returning near-zero influencers/projects/VCs on an account with a large raw follower count is a direct purchased-followers tell.",
+    "source_url": "https://api.sorsa.io/v3/static/sorsa_api_v3_documentation_en.txt"
+   },
+   {
+    "claim": "Elfa AI is the only verified vendor exposing trending contract addresses by social mention count for BOTH Twitter and Telegram",
+    "detail": "GET /v2/aggregations/trending-cas/twitter and GET /v2/aggregations/trending-cas/telegram \u2014 'Get trending contract addresses mentioned on Twitter/X. Returns contract addresses with mention counts', 'Plan Access: All plans (Free and above)', 'Data Recency: Computed at ingest in real time', 'Rate Limit 60 to 120 RPM by plan'. Takes either timeWindow or from/to. Other relevant endpoints: GET /v2/account/smart-stats (marked experimental), GET /v2/data/keyword-mentions (cursor-paginated, metadata.total capped at 10000, returns repostBreakdown.smart and repostBreakdown.ct = reposts by 'smart' and 'crypto-Twitter' accounts, no raw tweet text \u2014 only a link field), GET /v2/data/top-mentions, GET /v2/aggregations/trending-tokens. Pricing: Free $0/1,000 credits/60 RPM; Grow $290/mo ($2,958/yr) 40,000 credits 120 RPM; PAYG $0.009/credit, $20 minimum top-up, 60 RPM; x402 $0.009/credit paid in USDC on Base/Arbitrum/Polygon/Avalanche/Solana, no account, 1,000 RPM. Auth header 'x-elfa-api-key'. Every /v2/* response carries an 'x-elfa-credits' header with the exact cost. Event-summary and trending-narratives endpoints cost 5 credits each.",
+    "confidence": "high",
+    "actionable_for_bot": "trending-cas/telegram at 1,000 RPM via x402 is the cheapest way to get a mention-count time series keyed by contract address without building Telethon infrastructure. repostBreakdown.smart vs repostBreakdown.ct is a ready-made coordinated-amplification ratio: high ct, near-zero smart = shill farm.",
+    "source_url": "https://docs.elfa.ai/pricing/"
+   },
+   {
+    "claim": "LunarCrush's rate limits make per-launch use arithmetically impossible on the cheaper plans",
+    "detail": "Pricing page: Individual $90/mo ($72/mo annual), Builder $300/mo ($240 annual), Scale $900/mo ($720 annual), Enterprise custom. Rate limits by plan: Hobby 4 req/min and 100 req/day; Individual 10 req/min and 2,000 req/day; Builder 100 req/min and 20,000 req/day; Scale 500 req/min and 100,000 req/day. Base URL under lunarcrush.com/api4/public/, auth 'Authorization: Bearer <API_KEY>'. Hobby is market-data only; 'social, creator, and AI endpoints unlock on paid plans.' Coverage is a curated coin/topic universe (Galaxy Score, AltRank), not arbitrary Solana mints.",
+    "confidence": "high",
+    "actionable_for_bot": "2,000 requests/day at Individual is ~1.4 req/min sustained. If you see 1,000+ launches/day you cannot even do one call per launch. LunarCrush is a majors/narrative tool; it will not have your 90-second-old mint in coverage at all. Skip it for this bot.",
+    "source_url": "https://lunarcrush.com/pricing/"
+   },
+   {
+    "claim": "Santiment's real-time API is gated behind the $249/mo tier; the $49 tier's API data is deliberately 30 days stale",
+    "detail": "app.santiment.net/pricing: Free \u2014 '1K API calls / mo, 1 year historical data', 'Real-time API data with 30-day lag'. Sanbase Pro $49/mo ($529/yr) \u2014 '5K API calls / mo', still 'Real-time API data with 30-day lag'. Sanbase Max $249/mo ($2,700/yr) \u2014 'Real-time API data without restrictions', '80K API calls / mo, 2 years historical data'. Social volume metric (academy.santiment.net/metrics/social-volume/): 'The total number of social data text documents that contain the given search term at least once', sources = Telegram, Twitter, Reddit, 4chan, BitcoinTalk, YouTube videos; five-minute update intervals; supports arbitrary Lucene search terms, not just covered assets; historical data can be recalculated for the previous month when labels or sources change.",
+    "confidence": "high",
+    "actionable_for_bot": "Only Max ($249/mo, 80K calls) is usable live, and 80K calls/mo = 2,666/day. The arbitrary-Lucene-search-term capability means you could query a raw contract address as the search term \u2014 but 5-minute granularity plus the 80K cap makes this a research tool, not a live feed. The 'previous month recalculation' clause means any backtest you build on it is not reproducible.",
+    "source_url": "https://app.santiment.net/pricing"
+   },
+   {
+    "claim": "Kaito's Yaps public API is no longer free/open \u2014 it now returns Unauthorized and its Open Protocol documentation page 404s",
+    "detail": "I called https://api.kaito.ai/api/v1/yaps?username=elonmusk directly: response body {\"message\":\"Unauthorized\"}. https://docs.kaito.ai/kaito-yaps-tokenized-attention/yaps-open-protocol returns HTTP 404. Kaito Pro pricing (pro.kaito.ai/pricing) now shows only 'Enterprise Single-Seat $833/month billed annually' with API access as 'Contact Sales'. Search results indicate the Yaps post-to-earn program was sunset in January 2026 and the older documented default rate limit was 100 calls per 5 minutes.",
+    "confidence": "high",
+    "actionable_for_bot": "Any tutorial or repo that hits the unauthenticated Yaps endpoint is dead code. Do not plan around Kaito mindshare unless you are prepared to talk to sales at $833/seat/month equivalent. There is no published evidence that yaps or mindshare predicts memecoin returns.",
+    "source_url": "https://pro.kaito.ai/pricing"
+   },
+   {
+    "claim": "Apify's X scraper actors are 3-13x more expensive per tweet than the pure API vendors",
+    "detail": "apidojo/tweet-scraper ('Tweet Scraper V2'): 'Pricing from $0.40 / 1,000 tweets', claimed 30-80 tweets per second, 7.3K monthly active users, rating 3.9 from 196 reviews, community-maintained (not Apify-official). A cheaper competing actor, scrape.badger/twitter-tweets-scraper, advertises '$0.15 per 1,000 results' with 40+ search filters and no API key needed.",
+    "confidence": "high",
+    "actionable_for_bot": "Apify adds an actor-run orchestration layer you do not need for a low-latency loop. Use it only for bulk historical backfill of KOL timelines when building your labelled call dataset; use twitterapi.io or Sorsa for the live path.",
+    "source_url": "https://apify.com/apidojo/tweet-scraper"
+   },
+   {
+    "claim": "Nitter's free public-instance model is dead but the project is not archived; twscrape is the viable self-hosted path and requires your own X account pool",
+    "detail": "github.com/zedeus/nitter README (not archived, 1,336 commits): 'Running a Nitter instance now requires real accounts, since Twitter removed the previous methods.' Session tokens must be obtained per the wiki. github.com/vladkens/twscrape (~2.7k stars, 288 commits): 'an async Python library and CLI for X/Twitter Search and GraphQL endpoints. It runs on your own account pool, keeps sessions in SQLite, rotates accounts when an endpoint is rate-limited'. Auth via browser cookies (auth_token + ct0) or username/password with email verification. 'Rate limits are tracked per account and per endpoint. When an account is limited for one operation, twscrape locks it for that operation until the reset time and tries another active account.' Reporting from 2024-2026 states guest tokens expired in February 2024 and, as of January 2025, guest tokens were bound to browser fingerprints with datacenter IPs permanently banned.",
+    "confidence": "medium",
+    "actionable_for_bot": "twscrape's real cost is account attrition and residential proxies, not software. Budget for a rotating pool and expect periodic total breakage when X changes GraphQL. For a production trading bot, the $19-49/month you save over twitterapi.io is not worth the outage risk on a component you cannot fix at 3am.",
+    "source_url": "https://github.com/vladkens/twscrape"
+   },
+   {
+    "claim": "Telegram via Telethon/MTProto is the only sub-second social feed available at retail cost \u2014 but one account caps at 500 channels",
+    "detail": "limits.tginfo.me: 'Channels and supergroups number you can be member of (combined): up to 500 (including ones you own)' \u2014 'up to 1000' with Premium. Group/channel creation limited to 50/day. Official clients allow up to 3 accounts (4-6 on some apps). Supergroups support up to 200,000 members; broadcast channels are unlimited. Telethon's Message object exposes id, date (UTC), message text, entities, views (broadcast channel view count), forwards, edit_date, reply_to. events.NewMessage delivers over the persistent MTProto connection with no polling interval. TGStat, which indexes 2,832,100 channels and 63.37bn posts, claims new posts appear in search 'as soon as in 7 seconds after being posted' \u2014 that is the third-party-index floor, versus sub-second for a direct MTProto subscription.",
+    "confidence": "high",
+    "actionable_for_bot": "Design for N accounts \u00d7 500 channels. Two accounts at 500 each covers 1,000 channels for the cost of two SIMs. Message.views and Message.forwards give you a free, per-call reach measurement that no X product gives you cheaply. Note edit_date: call channels edit messages to change the CA \u2014 always store the original text and diff on edit.",
+    "source_url": "https://limits.tginfo.me/en"
+   },
+   {
+    "claim": "The largest 'crypto' Telegram channels are airdrop/tap-to-earn farms, not call channels \u2014 channel-size rankings are useless for finding callers",
+    "detail": "TGStat's crypto channel rating by subscribers is topped by Blum (@blumcrypto) 15,288,096; Major Community (@majors) 11,754,854; Catapult Extreme (@catapult_extreme) 9,022,056; Roxman (@roxman) 7,614,208; DOGS Community (@dogs) 7,385,407; FX Holding (@fx_holding_community) 6,422,996; Time Farm News (@TimeFarmChannel) 5,604,564; Tofan Trade (@Tofan_Trade) 5,230,803; Tonkeeper News (@tonkeeper_news) 5,007,986; Bitget Wallet Announcements 4,210,268. None of these are Solana memecoin call channels. I probed plausible handles (@pumpfunalerts=129 subscribers, @potionalpha=34, @solanagems=91 members) and found no large public Solana call channel by guessing \u2014 the real ones are private, invite-gated, or rotate handles.",
+    "confidence": "high",
+    "actionable_for_bot": "Do not build a channel list from public rankings. Build it from the launch side: parse the telegram field in pump.fun launch metadata, resolve each t.me link, and score channels by realised forward performance of the CAs they posted. That is a self-bootstrapping, objective discovery mechanism and it is the only honest one.",
+    "source_url": "https://tgstat.com/en/ratings/channels/crypto"
+   },
+   {
+    "claim": "TGStat is a usable Telegram-wide index with published pricing, ~7s indexing latency",
+    "detail": "2,832,100 channels, 286,300 groups, 63.37bn posts, +33.7m new posts in 24 hours. 'New posts are indexed in real-time and are present in search results as soon as in 7 seconds after being posted on Telegram.' Pricing: Free \u2014 20 recent posts per search, 7-day result window. Personal \u2014 2,940 RUB/month, 1,000 posts per search, group searching, all filters. Corporate \u2014 6,300 RUB/month, up to 5 accounts. Offers an API for statistics and post search plus a callback API.",
+    "confidence": "medium",
+    "actionable_for_bot": "Useful for retrospective 'who posted this CA first and when' across 2.8M channels, which you cannot do with Telethon (you only see channels you joined). The 7s index latency rules it out as a trigger. api.tgstat.org did not resolve DNS from this environment \u2014 verify the API host before depending on it.",
+    "source_url": "https://tgstat.com/en/search?q=pump.fun"
+   },
+   {
+    "claim": "Moby is effectively gone and Alphanomics is down; ChainEdge publishes no pricing",
+    "detail": "moby.trade returns a Namecheap 'Domain registration has expired' page. www.mobyagent.com returns HTTP 200 but renders empty (JS shell, no content). alphanomics.io returns 'We'll be back soon \u2014 We're making improvements.' chainedge.io loads a smart-money-wallet-tracking marketing site but /pricing and /pricing/ both 404. I found no public API documentation, endpoint, or price for any of the three, and no Phantom-hosted Moby API.",
+    "confidence": "high",
+    "actionable_for_bot": "Treat all three as non-integrable. Anyone citing 'Moby alpha' or 'Alphanomics signals' in 2026 is quoting a dead or undocumented product.",
+    "source_url": "https://moby.trade"
+   },
+   {
+    "claim": "Followers who buy at the call face NEGATIVE expected returns \u2014 this is the headline peer-reviewed finding, not a caveat",
+    "detail": "Dhawan & Putni\u0146\u0161, 'A New Wolf in Town? Pump-and-Dump Manipulation in Cryptocurrency Markets' (SSRN 3670714, published in Review of Finance): 'We investigate the puzzle of widespread participation in cryptocurrency pump-and-dump manipulation schemes... Puzzlingly, people join in despite negative expected returns... Analyzing a sample of 355 cases in six months, we find strong empirical support for both mechanisms [overconfidence and gambling preferences]. Pumps generate extreme price distortions of 65% on average, abnormal trading volumes in the millions of dollars, and large wealth transfers between participants.'",
+    "confidence": "high",
+    "actionable_for_bot": "The academic consensus is that the call is the exit liquidity event, not the entry. Any strategy whose entry condition is 'a call happened' is, per the only large-sample study that computes it, negative-EV before fees and slippage. If you use call data at all, use it as a feature that must be combined with a pre-call on-chain edge, or as a veto.",
+    "source_url": "https://doi.org/10.2139/ssrn.3670714"
+   },
+   {
+    "claim": "Insiders capture ~18% aggregate return; at least one channel announced the coin when price was already at peak, making follower profit impossible",
+    "detail": "Xu & Livshits (USENIX Security 2019, arXiv:1811.10109), 412 pump-and-dumps across 300+ Telegram channels, 2018-06-17 to 2019-02-26. Table 1 (348 events with price data): Binance 51 events / 148.97 BTC admin profit / 15% admin return; Bittrex 15 / 0.92 / 7%; Cryptopia 180 / 44.09 / 57%; Yobit 102 / 5.54 / 52%; Total 348 / 199.52 BTC / 18%. Verbatim: 'We estimate that admins made a net pro\ufb01t of 199.52 BTC, equivalent to 1.1 million USD, through 348 pump and dump events'; 'Since trading is a zero-sum game, the aggregate investor loss would be on the equivalent scale as the aggregate admin win.' Case study: 'Bomba bitcoin \"cryptopia\" only announced the coin at the time when the coin price was already at its peak, making it impossible for investors who solely relied on the channel to make any money.' Also: 'Three and half minutes after the start of the pump-and-dump, the coin price had dropped below its open price.' And on Cryptopia: 'in numerous pumps, coin prices were elevated to such an extent that the hourly return before the pump even exceeds the hourly return during the pump' \u2014 i.e. organisers front-run their own announcement.",
+    "confidence": "high",
+    "actionable_for_bot": "Pre-announcement price/volume drift is measurable and is your only realistic edge in this data \u2014 if you can detect accumulation BEFORE the call, that is a signal; the call itself is the top. The 3.5-minute round trip to below open sets your maximum tolerable holding period if you ever do trade a call.",
+    "source_url": "https://arxiv.org/abs/1811.10109"
+   },
+   {
+    "claim": "Channel reach is NEGATIVELY correlated with pump gain (-0.162) \u2014 bigger channel does not mean bigger move",
+    "detail": "Xu & Livshits: 'we \ufb01nd a negative correlation (-0.162) between number of views of coin announcement and pump gain, which is rather counter-intuitive... Two extreme examples: the coin announcement of the pump on MST had 325 views and the pump gain was 12.6%; another coin announcement of the pump on PARTY had only 18 views, and the pump gain was a whopping 533.3%. This \ufb01nding suggests that the number of views cannot accurately proxy number of participants.'",
+    "confidence": "high",
+    "actionable_for_bot": "Do not weight a call by follower count or view count. If you build a channel-quality score, weight by realised forward return of the CAs the channel posted, not by audience size. This single finding invalidates most retail 'follow the big KOLs' products.",
+    "source_url": "https://arxiv.org/abs/1811.10109"
+   },
+   {
+    "claim": "The dump begins ~19 seconds into the pump, and tiered channels give VIPs a 1-10 second head start",
+    "detail": "La Morgia, Mei, Sassi, Stefa \u2014 'Pump and Dumps in the Bitcoin Era' (arXiv:2005.06610) and 'The Doge of Wall Street' (arXiv:2105.00733, ACM TOIT), ~900 events over 3+ years across 20 Telegram groups. On the OAX pump: 'there are two buy peaks... of approximately 65 Bitcoins' and 'a peak in the sell volumes of almost 10 Bitcoins at the moment of the first buy peak, the 19th second. Considering that group members are still buying and the reaction time for outsiders is too short, this sudden big sell volume is abnormal. There can be only two possible actors to sell their assets: the bots and the admins.' On tiering: 'The advantage in terms of time of being at a higher level is usually between 0.5 and 1 second with respect to the next level, and the maximum advantage is in the interval between 1 and 10 seconds.' Big Pump Signal peaked at 200,000 Telegram members and 250,000 Discord members. Their real-time detector fires within 25 seconds (F1 94.5%) vs 30 minutes for the Kamps & Kleinberg baseline (F1 62.7%).",
+    "confidence": "high",
+    "actionable_for_bot": "If a channel is tiered, you are structurally in the last cohort. Quantify it: measure the timestamp gap between the earliest on-chain buy of a CA and the channel message timestamp. If median gap > 0 (buys precede the post), that channel is front-run and its calls are unusable. This is a cheap, objective per-channel test you can run on your own data.",
+    "source_url": "https://arxiv.org/abs/2105.00733"
+   },
+   {
+    "claim": "Pump price peaks in roughly two minutes; average 5-minute max gain is 15% on liquid venues vs 790% on illiquid ones; -30% one year later",
+    "detail": "Clough & Edwards, 'Pump, Dump, and then What?' (arXiv:2309.06608, APWG eCrime 2023). Dataset expanded from 1,111 to 10,687 pump events across 765 coins. Verbatim: 'the price rapidly rises as participants buy into the coin, peaks for around two minutes, then rapidly falls'. \u0394P is defined as (Pmax \u2212 Pbefore)/Pbefore over 'the maximum price in the 5 minutes after a pump announcement'. 'The maximum price increase, on average, is much lower (15.02% vs 790.54%) for pumps organised by CPI and therefore for those taking place on Binance.' Long-run: 'the long-term impact of pump and dump schemes on the targeted assets is negative, amounting to an average 30% relative drop in price a year after the pump event.' Most-targeted coin: 98 pumps over 4 years. Prior work cited: Victor & Hagermann found a pumped coin performs ~10% better than peers over 100 days (contradicting the -30% figure); Aggarwal-style equity manipulation studies show peak CAR 28% decaying to 0% by day +100.",
+    "confidence": "high",
+    "actionable_for_bot": "Two-minute peak sets the entire trade clock. The 15% vs 790% split is the key structural insight: gains scale inversely with liquidity, which is exactly why your 2%-of-pool-depth sizing cap is the right constraint \u2014 the venues where calls produce big prints are the venues where you cannot get size out.",
+    "source_url": "https://arxiv.org/abs/2309.06608"
+   },
+   {
+    "claim": "On pump.fun, an advertised Telegram channel is a strong graduation predictor; an advertised Twitter account is nearly worthless",
+    "detail": "Kamat, 'Pump.fun Graduation Regime Windows' (arXiv:2607.02823v3), 832,941 launches, 1,651 graduations, 2026-05-08 to 2026-06-10. Stratified fast-regime graduation rates: has_twitter=0 n=304,815, 453 grads, 0.1486% [0.136, 0.163]; has_twitter=1 n=528,126, 1,198 grads, 0.2268% [0.214, 0.240]; log-rank p=1.1e-14. has_website=0 0.1584%, has_website=1 0.2636%, p=1.2e-25. has_telegram=0 n=812,671, 0.1661%; has_telegram=1 n=20,270, 1.4850% [1.327, 1.661], p<1e-300, an 8.94x lift. Multivariate Cox: has_telegram HR 5.402 [4.733, 6.166]; log(1+mcap_sol) HR 4.506; has_twitter HR 1.305 [1.192, 1.428]; has_website HR 1.194; log(1+desc_len) HR 1.054. Concordance 0.858. By social_count: 0 channels (n=267,322) 0.1104%; 1 (n=281,289) 0.2293%; 2 (n=270,622) 0.1655%; 3 (n=13,708) 1.9186% \u2014 a 17.4x lift for full stack over none, but NON-MONOTONIC (2 is worse than 1), so essentially all the signal is the Telegram indicator. CRITICAL CAVEAT the author documents in full: the collector polled a top-50-newest endpoint and effectively only observed ~6 minutes post-launch, so all rates are fast-regime lower bounds, not 24-hour rates; a later attempted correction was tested on-chain (0 of 100 sampled mints confirmed) and withdrawn.",
+    "confidence": "high",
+    "actionable_for_bot": "Add has_telegram from launch metadata as a scoring feature with roughly an 8-9x prior lift \u2014 it is free, available at mint, and it is the single strongest social variable published. Do NOT add has_twitter as a positive: HR 1.30 with 63% of all launches carrying one means it discriminates almost nothing. Only 2.43% of launches (20,270/832,941) advertise Telegram, so this gates you to a small, high-prior subset \u2014 exactly the shape you want given your 7.5%-ever-2x base rate.",
+    "source_url": "https://arxiv.org/abs/2607.02823"
+   },
+   {
+    "claim": "The best published Solana memecoin risk models use ZERO social features",
+    "detail": "I grep-searched the full text of both for 'twitter', 'telegram', and 'social media' and found zero occurrences. MELT (arXiv:2602.13480, Georgia Tech): 41k+ Solana memecoin launches, 200M+ transactions, 122 behavioral features, all on-chain; finds 'on average, 36.5% of token supply is held by coordinated accounts'; integrating model predictions into a selection strategy 'reduces investment loss significantly'. 'Catching the Rug' (arXiv:2608.20271): 6.4 million Solana tokens over 7 months; 'a vast majority of these memecoins exhibit rug pull characteristics within one hour of launch'; XGBoost achieves robust detection 'using only the first 5 minutes of trading data'; cross-platform generalization tested between PumpFun and Raydium with multi-source fusion mitigating domain shift.",
+    "confidence": "high",
+    "actionable_for_bot": "This is the blunt answer to 'is social alpha real for memecoins': the published state of the art beats the problem without touching X or Telegram at all. Your on-chain filter stack is the load-bearing component. Social data should be additive at the margin (Telegram-presence prior, hacked-account veto, bot-amplification veto) and should never be allowed to override an on-chain reject.",
+    "source_url": "https://arxiv.org/abs/2602.13480"
+   },
+   {
+    "claim": "Coordinated sniper wallet rings measurably lift early buyer flow but not SOL inflow \u2014 the 'crowd' they appear to summon is largely themselves",
+    "detail": "Kamat, 'Coordinated Sniper Cohorts on Pump.fun' (arXiv:2607.02795v3): 1,578,333 buyer observations across 166,098 launches over 13.38 days. Union-find on co-occurrence graphs identifies 1,012 persistent wallet cohorts (2-12 wallets each, 2,965 unique addresses). Contamination-adjusted 1:1 propensity-score matching (0.2-SD caliper, 10 covariates, 5,419 matched pairs, worst post-match SMD 0.077) gives first-30-minute buyer-count lift +16.1% [+13.0%, +19.4%], but first-30-minute SOL-inflow lift +6.3% [\u22120.5%, +15.1%] \u2014 NOT statistically distinguishable from zero. The naive contaminated pooled contrast is +130.9%, dropping to +63.9% when cohort events are excluded. Of 5,419 treated launches, 382 (7.0%) had zero non-cohort buyers in the first 30 minutes. The author explicitly reports that the activity-matched placebo estimator is itself biased (median placebo lift +189.6%, above the real effect in 100/100 seeds) and retains it only as a bias diagnostic, not a falsification test.",
+    "confidence": "high",
+    "actionable_for_bot": "This is a rigorous, honest quantification of the front-running problem in your exact market: coordinated early buyers add headcount but no measurable money. 'Lots of buyers in the first 30 minutes' is therefore a contaminated feature \u2014 split your participation-evidence metric into unique-buyer count AND non-cohort SOL inflow, and weight the latter. Anything that fires on buyer count alone is being farmed.",
+    "source_url": "https://arxiv.org/abs/2607.02795"
+   },
+   {
+    "claim": "Coordinated bot mention campaigns are real and measurable \u2014 61% bot-driven engagement \u2014 but the standard tool for detecting them no longer works",
+    "detail": "Saha Roy et al., 'Unveiling the Risks of NFT Promotion Scams' (arXiv:2301.09806): longitudinal study of 439 Twitter promotion accounts that promoted 823 unique projects over two months. 'more than 36% of these projects were fraudulent'. Sampling 100 retweeters per promotion tweet across 283,409 total users, at Botometer threshold t=0.43: 'more than 61% of users (n=173,446) who had retweeted promotion tweets exhibited bot-like activity.' By contrast '72.1% of all comments came from real accounts.' '46.2% of the NFT promotion accounts (n=203) had been suspended' over the study. Their own classifier flagged 382 new fraudulent projects at 95.2% TPR; those accounts had 'a median follower count of 3.7k and a median like count of 198 (based on the first 10 posts in their timeline)'. Enforcement was near-zero: 'only 59 out of 382 fraudulent NFT projects (approximately 15%) were suspended by Twitter within a week'. Losses in this modest sample exceeded $5.1 million. Botometer's public service is no longer operable following X's API repricing, so the t=0.43 threshold is not directly reproducible today.",
+    "confidence": "high",
+    "actionable_for_bot": "Implementable proxy for the dead Botometer: for a token's mention set, compute (i) the fraction of distinct engaging accounts whose created_at is within 90 days, (ii) the fraction whose followers_count/followings_count < 0.1, (iii) the Jaccard overlap of engager sets across the last N tokens promoted by the same handle, (iv) near-duplicate text rate across mentions. The 'same accounts topping the PnL table on every promoted token' pattern that Bubblemaps used is the on-chain analogue of (iii) and is cheaper to compute. Median 3.7k followers / 198 likes on first 10 posts is a usable calibration point for what a scam-promoter profile looks like.",
+    "source_url": "https://arxiv.org/abs/2301.09806"
+   },
+   {
+    "claim": "Detecting a repurposed/hacked X account: the reliable primitives are created_at, user_id stability, and profile-change events \u2014 not follower count",
+    "detail": "Mechanics verified from Sorsa's API docs: the User object exposes created_at (ISO 8601 account creation date) which does NOT change when a handle is repurposed, while GET /username-to-id notes 'Unlike usernames, user IDs never change.' The Follower object carries a follow date, so you can measure the age distribution of the follower cohort. SocialData's Monitoring API has a dedicated 'User Profile' monitor type that fires a webhook 'when profile information like bio or name' changes, ~30s latency, ~$4.99/month for up to 10 monitors. Bubblemaps' 'Hacked or Habits' case study on the Matt Furie account documents the real-world pattern: four tokens ($BOYZ, $MEGUSTA, $DORK, $MUFFIN) promoted within a single week in 2026, posts deleted with compromise claims, 'the same wallets tended to top the profit-and-loss tables on each promoted token', three compromises in one month with no security upgrade, location mismatches and extended prior inactivity, account went private afterward. Their conclusion was roughly 50-50 between genuine repeat compromise and insider involvement.",
+    "confidence": "medium",
+    "actionable_for_bot": "Concrete veto rule: reject when the token's advertised X handle satisfies (created_at older than 365 days) AND (the account's earliest crypto-related post is younger than 14 days) AND (a long posting gap exists in the timeline immediately before the crypto pivot). Add a hard reject when the same wallet cluster appears in the top-10 realised-PnL set for two or more tokens promoted by the same handle within 30 days \u2014 that is the strongest documented signature and it is on-chain, so it costs you nothing extra. Confidence is medium because no paper has measured the precision/recall of these rules at scale; they are pattern-matched from investigations, not validated.",
+    "source_url": "https://blog.bubblemaps.io/hacked-or-habits-examining-the-matt-furie-account-pattern/"
+   },
+   {
+    "claim": "Celebrity/KOL-called tokens: measured drawdowns of 93-98% and extraction concentrated in one cluster within an hour",
+    "detail": "$HAWK (Bubblemaps): launched 2024-12-04, peak market cap ~$500M, final ~$25M, 'roughly 98%' decline, collapse within days; '96% of the supply in one cluster' at TGE, '80%+ of the supply' retained by team, only '3%' sent to the Meteora LP pool; 285 presale investors with a 17% strategic allocation 'fully unlocked at TGE'; '155 wallets sold at least some of their bags' realising '$3.3M'. $LIBRA (Bubblemaps): announced by President Milei 2025-02-14, peak ~$4 billion in under two days, '82% cluster concentration', '$87 million in a single hour' extracted early on 2025-02-15 (148,343 SOL \u2248 $29.6M; 69,275 SOL \u2248 $13.8M; $42.79M USDC to a Squad Vault), '$25M in liquidity pool fees within one hour', investor losses exceeding $250 million; extraction was done by adding one-sided liquidity and pulling stables rather than by open-market selling, to avoid slippage. $TRUMP (peer-reviewed, SSRN 6479621): '93.4% decline from its all-time closing price high of $45.50 on January 19, 2025, to $3.00 on March 27, 2026'; two subsequent promotional events 'created temporary price spikes but did not reverse' the decline.",
+    "confidence": "high",
+    "actionable_for_bot": "The biggest calls in history produced 93-98% drawdowns. Your laddered scale-out with cost recovery at 1.6x is the correct structural response; the LIBRA one-sided-liquidity extraction pattern is also a concrete detector \u2014 watch for single-sided LP adds and stable removals from the pool, which precede price collapse without printing a large sell.",
+    "source_url": "https://blog.bubblemaps.io/the-libra-playbook-how-one-cluster-drained-87-million-in-a-single-hour/"
+   },
+   {
+    "claim": "'First mention velocity' has no published predictive value for memecoins that I could find; the honest adjacent evidence is weak and slow",
+    "detail": "I searched arXiv (multiple query formulations), Crossref, and fetched every candidate paper. Nothing measures mention-velocity-to-return on memecoins. The nearest published results: (1) Alizadeh et al., arXiv:2411.05577 \u2014 LLM-extracted buy signals from crypto news outlets and influencers, VAR/Granger against the top nine cryptocurrencies: 'the results show a mixed pattern across cryptocurrencies and temporal periods. However, we found that for the top three cryptocurrencies... their aggregated LLM-detected trading signal over the preceding 24 hours granger-causes fluctuations in their market prices, exhibiting a lag of at least 6 hours.' Six hours, majors only, mixed. (2) 'Social Media Finfluencers: Evidence from YouTube and Cryptocurrencies' (SSRN 4594081): 'while aggregate new video counts on a specific cryptocurrency Granger-causes its price to increase the following day, new video counts by top finfluencers do not. Our evidence suggests that YouTube influencers do not directly influence cryptocurrency prices, but YouTube is likely a platform that propagates the herding behavior.' (3) Kropiunig et al., arXiv:2603.12000, 'Credibility Matters: Motivations, Characteristics, and Influence Mechanisms of Crypto Key Opinion Leaders' \u2014 13 qualitative interviews, no return data whatsoever.",
+    "confidence": "high",
+    "actionable_for_bot": "Do not ship a mention-velocity entry trigger and do not pay for a product that sells one as validated. If you want to know whether it works on your market, you already have the apparatus: log first-mention timestamp and mention counts alongside your existing 924-launch census schema, wait for a few thousand launches, and test it yourself against your measured base rates (median peak 1.000x, 7.5% ever 2x). That is a 2-3 month measurement, not a purchase.",
+    "source_url": "https://arxiv.org/abs/2411.05577"
+   },
+   {
+    "claim": "Ecosystem-level base rates that bound how much any social signal can be worth",
+    "detail": "Chainalysis 2025 market-manipulation report: '2,063,519' tokens launched in 2024, '873,957' listed on a DEX ('42.54%'), '74,037' displaying pump-and-dump patterns ('3.59% of all launched tokens'); average time to abandonment 6.23 days, median 0 days, p90 8 days, p99 123 days; '94%' of rugged pools rugged by the deployer address, '6%' by funded addresses; only '1.7%' of launched tokens were actively traded within 30 days. Chainalysis 2024 report (Ethereum 2023): 'just over 370,000 tokens were launched', ~168,600 DEX-listed, '54.6% of tokens that were listed on a DEX' met three suspicious-pattern criteria (90,408 tokens, 24.4% of all launched), collectively '$241.6 million in profit in 2023' at 'just $2,672 each' per token; one address 'launched 81 different token types to generate an estimated $830,000'; these tokens were 'only 1.3% of total trade volume on Ethereum DEXes'. MemeChain (arXiv:2601.22185): 34,988 meme coins across Ethereum, BNB, Solana, Base; '1,801 tokens (5.15%) that cease all trading activity within just 24 hours of launch'.",
+    "confidence": "high",
+    "actionable_for_bot": "$2,672 median scammer profit per token tells you the adversary's economics: they are running volume, not craft. That is why on-chain behavioral features generalise (the playbook is repetitive) and why social features do not (the narrative is disposable). Your own census (median peak 1.000x) is consistent with the 1.7%-actively-traded-at-30-days figure.",
+    "source_url": "https://www.chainalysis.com/blog/crypto-market-manipulation-wash-trading-pump-and-dump-2025/"
+   },
+   {
+    "claim": "A 15-day live Solana deployment shows filter-stack results are structurally fragile at small sample sizes",
+    "detail": "Kamat, arXiv:2606.08232, 190 paper trades March 29 - April 12 2026: 40.5% win rate, mean per-trade +0.62%, cumulative +117.7% (net SOL +0.039), skewness -1.21, excess kurtosis 6.61. 'Removing the top three trades (1.6 percent of sample) flips cumulative return unprofitable.' Hour-of-day test: three worst hours (2, 13, 23 UTC; n=17, mean -11.60%) vs all others (n=173, mean +1.82%) gives Mann-Whitney U=1,345, p=0.5634, rank-biserial r=0.085 \u2014 'directional and non-confirmatory'. Counterfactual rejection tracking: 4,874 forward observations across 184 rejection events; 'Of the 48 events observed for at least six hours, 27 (56.25 percent) reached a 50 percent drawdown from reference; the full-cohort figure of 17.9 percent is reported... as a censored lower bound.'",
+    "confidence": "high",
+    "actionable_for_bot": "Directly transferable methodology: track the forward returns of tokens your filter REJECTS, not just the ones you buy. 56.25% of rejects hitting -50% within six hours is how you prove a filter is net-positive rather than assuming it. Also: at n<300 on a kurtosis-6.6 distribution, any A/B test of a social feature will be noise \u2014 pre-commit to a sample size before you evaluate whether X data helped.",
+    "source_url": "https://arxiv.org/abs/2606.08232"
+   }
+  ],
+  "concrete_apis": [
+   {
+    "name": "X API v2 \u2014 Filtered Stream",
+    "what_it_gives": "Persistent HTTP stream of Posts matching up to 1,000 rules; also POST/GET rules management. ~6-7s P99 latency. 250 posts/sec ceiling.",
+    "base_url_or_pkg": "GET https://api.x.com/2/tweets/search/stream ; POST/GET https://api.x.com/2/tweets/search/stream/rules",
+    "auth": "OAuth 2.0 App-Only Bearer token, header Authorization: Bearer <token>",
+    "cost": "No connection fee, but every delivered Post is a billable Post read at $0.005 (webhook post.create also $0.005). 24h UTC dedup applies. Pay-per-use cap 3,000,000 Post reads/month.",
+    "rate_limits": "Stream connect 50/15min; GET rules 450/15min; POST rules 100/15min. Pay-per-use: 1 connection, 1,000 rules, 1,024-char rules. Enterprise: 25,000+ rules, 2,048 chars, multiple connections, embedding: operator."
+   },
+   {
+    "name": "X API v2 \u2014 Recent Search / Full-Archive Search",
+    "what_it_gives": "Recent: last 7 days, 100 results/request, 512-char query, all developers. Full-archive: back to March 2006, 500 results/request, 1,024-char query, pay-per-use and Enterprise only.",
+    "base_url_or_pkg": "GET https://api.x.com/2/tweets/search/recent ; GET https://api.x.com/2/tweets/search/all",
+    "auth": "Bearer token (app-only) or OAuth 2.0 user token",
+    "cost": "$0.005 per Post returned; $0.010 per User returned via expansions",
+    "rate_limits": "recent: 450/15min app, 300/15min user. all: 1/sec and 300/15min app."
+   },
+   {
+    "name": "X API v2 \u2014 Powerstream",
+    "what_it_gives": "Lowest-latency streaming, PowerTrack-style rules, local-datacenter option to avoid replication lag, HTTP/1.1 chunked JSON. Up to 1,000 rules at 2,048 chars.",
+    "base_url_or_pkg": "GET https://api.x.com/2/powerstream ; rules at https://api.x.com/2/powerstream/rules",
+    "auth": "OAuth 2.0 Bearer token",
+    "cost": "Not published. 'A premium offering available under select Enterprise plans' \u2014 contact sales via the Enterprise Request Form.",
+    "rate_limits": "1,000 rules, 2,048 chars per rule. Other limits not published."
+   },
+   {
+    "name": "twitterapi.io",
+    "what_it_gives": "75+ endpoints across tweets, users, search, trends. Cheapest verified per-tweet rate.",
+    "base_url_or_pkg": "https://api.twitterapi.io (see /readme)",
+    "auth": "API key",
+    "cost": "$0.15/1K tweets; $0.18/1K user profiles; followers/following from $0.01/1K tiered; follower IDs from $0.0045/1K tiered. 1 USD = 100,000 credits. Minimum $0.00015 (15 credits) per call. No minimum spend; recharged credits never expire; bonus credits expire in 30 days.",
+    "rate_limits": "Free: 1 request per 5 seconds. Paid, gated on credit balance: 1,000+ credits = 3 QPS; 5,000+ = 6 QPS; 10,000+ = 10 QPS; 50,000+ = 20 QPS. Raisable on request."
+   },
+   {
+    "name": "SocialData.tools \u2014 Data API",
+    "what_it_gives": "Search, user profile/followers/tweets/mentions, tweet detail/comments/quotes/retweeters, threads, lists, communities, spaces, plus Social Actions verification (is-following, retweeted, commented). MCP server available.",
+    "base_url_or_pkg": "https://api.socialdata.tools (docs at docs.socialdata.tools)",
+    "auth": "API key (Bearer)",
+    "cost": "$0.0002 per tweet or user profile returned ($0.20 per 1,000 items). Failed requests are not billed. HTTP 402 when balance is zero.",
+    "rate_limits": "120 requests per minute per API key, shared across all endpoints. Higher limits free on request."
+   },
+   {
+    "name": "SocialData.tools \u2014 Monitoring API (webhooks)",
+    "what_it_gives": "Four monitor types: user tweets, user following, USER PROFILE (fires on bio/display-name change \u2014 the repurposed-account primitive), and search. Webhook POST with full tweet object and monitor metadata. Deduplicated; auto-pauses on zero balance.",
+    "base_url_or_pkg": "POST /monitors/user-tweets, /monitors/user-following, /monitors/user-profile, /monitors/search; plus set-webhook-url, set-webhook-secret, monitor event history",
+    "auth": "API key; webhook signature verification supported via webhook secret",
+    "cost": "User monitors hourly with volume tiers: 1-10 $0.0069/hr (~$4.99/mo), 11-100 $0.0062/hr, 101-300 $0.0055/hr, 301-500 $0.0048/hr, 501-1000 $0.0042/hr, 1000+ $0.0035/hr (~$2.49/mo). Search monitors $0.0002 per tweet delivered plus $0.0002 flat per empty execution; at 30s refresh that is 2,880 executions/day \u2248 $17.28/mo floor per monitor.",
+    "rate_limits": "Delivery explicitly not real-time: 'events typically arrive within 30 seconds'. Monitors capture only future activity from creation."
+   },
+   {
+    "name": "Sorsa (api.sorsa.io; also serves tweetscout.io)",
+    "what_it_gives": "40 read-only endpoints: search-tweets, mentions (min_likes/min_replies/min_retweets/since_date/until_date filters), search-users, user profile with created_at, followers with follow dates, tweet bulk lookup, communities, lists, follow/retweet/comment verification. Crypto section: /score, /score-changes (7d/30d), /followers-stats (influencers/projects/VCs breakdown), /top-followers, /top-following, /new-followers-7d, /new-following-7d. /username-to-id for stable IDs.",
+    "base_url_or_pkg": "https://api.sorsa.io/v3 ; LLM-readable docs at https://api.sorsa.io/v3/static/sorsa_api_v3_documentation_en.txt",
+    "auth": "Header 'ApiKey: YOUR_API_KEY'",
+    "cost": "Starter $49/mo 10K requests; Pro $199/mo 100K requests; Enterprise $899/mo 500K requests. Flat 1 request = 1 call on all endpoints. From $0.02/1K tweets, $0.01/1K profiles, $0.002 per verification check. 100 free requests on signup, no card, never expire. Card or crypto.",
+    "rate_limits": "20 req/sec on every plan including Starter. Claimed 300ms p50, 99.9% uptime. Crypto-section endpoints only cover accounts already in Sorsa's crypto database."
+   },
+   {
+    "name": "Elfa AI v2",
+    "what_it_gives": "GET /v2/aggregations/trending-cas/twitter and /telegram (contract addresses with mention counts, computed at ingest in real time \u2014 the only verified vendor doing this for both platforms); /v2/aggregations/trending-tokens; /v2/data/top-mentions (page/pageSize); /v2/data/keyword-mentions (cursor-paginated, metadata.total capped at 10000, returns repostBreakdown.smart and repostBreakdown.ct, NO raw tweet text \u2014 only a link); /v2/data/market-events; /v2/data/token-news; /v2/account/smart-stats (experimental); /v2/data/event-summary and /v2/aggregations/trending-narratives (5 credits each); Chat and Auto (agent) endpoints.",
+    "base_url_or_pkg": "https://api.elfa.ai/v2 ; OpenAPI spec exportable from docs.elfa.ai/api/rest/elfa-api",
+    "auth": "Header 'x-elfa-api-key'. Alternatively x402 pay-per-request in USDC on Base/Arbitrum/Polygon/Avalanche/Solana with no account.",
+    "cost": "Free $0 / 1,000 credits per month. Grow $290/mo or $2,958/yr / 40,000 credits. PAYG $0.009/credit, $20 minimum top-up. x402 $0.009/credit, no minimum. Enterprise custom. Every /v2/* response returns an 'x-elfa-credits' header with the exact charge.",
+    "rate_limits": "Free 60 RPM; Grow 120 RPM; PAYG 60 RPM; x402 1,000 RPM; Enterprise custom. Honor Retry-After on 429."
+   },
+   {
+    "name": "LunarCrush API v4",
+    "what_it_gives": "Social sentiment, Galaxy Score, AltRank, social volume/dominance across a curated crypto and stock topic universe; creators and trending topics; MCP integration. Not designed for arbitrary new mints.",
+    "base_url_or_pkg": "https://lunarcrush.com/api4/public/...",
+    "auth": "Authorization: Bearer <API_KEY>",
+    "cost": "Individual $90/mo ($72/mo annual); Builder $300/mo ($240 annual); Scale $900/mo ($720 annual); Enterprise custom. A free Hobby tier exists with market-data endpoints only.",
+    "rate_limits": "Hobby 4/min and 100/day; Individual 10/min and 2,000/day; Builder 100/min and 20,000/day; Scale 500/min and 100,000/day. The 2,000/day Individual cap makes per-launch polling impossible."
+   },
+   {
+    "name": "Santiment",
+    "what_it_gives": "social_volume_total and per-source social metrics from Telegram, Twitter, Reddit, 4chan, BitcoinTalk and YouTube videos; five-minute update intervals; arbitrary Lucene search terms (so a raw contract address is queryable), not only covered assets. GraphQL API.",
+    "base_url_or_pkg": "https://api.santiment.net/graphql (GraphiQL at /graphiql)",
+    "auth": "API key",
+    "cost": "Free: 1K API calls/mo, 1 year history, real-time API data carries a 30-day lag. Sanbase Pro $49/mo ($529/yr): 5K calls/mo, STILL a 30-day API lag. Sanbase Max $249/mo ($2,700/yr): real-time API data without restrictions, 80K calls/mo, 2 years history. 20% discount for holding SAN.",
+    "rate_limits": "Call-count quotas rather than QPS: 1K / 5K / 80K per month by tier. Note: historical values can be recalculated for the previous month when labels or sources change, which breaks backtest reproducibility."
+   },
+   {
+    "name": "Apify \u2014 X/Twitter scraper actors",
+    "what_it_gives": "Search, URL, list, and profile scraping with advanced-search filters; batch tweet lookup, replies, retweeters, favoriters, quotes.",
+    "base_url_or_pkg": "apify.com/apidojo/tweet-scraper (Tweet Scraper V2); apify.com/scrape.badger/twitter-tweets-scraper",
+    "auth": "Apify API token",
+    "cost": "apidojo/tweet-scraper 'from $0.40 / 1,000 tweets'; scrape.badger/twitter-tweets-scraper '$0.15 per 1,000 results'.",
+    "rate_limits": "apidojo claims 30-80 tweets/second. Community-maintained (not Apify-official); 3.9/5 from 196 reviews, 7.3K monthly active users. Actor-run orchestration adds latency unsuitable for a live path."
+   },
+   {
+    "name": "Telethon (Telegram MTProto)",
+    "what_it_gives": "Sub-second push delivery of channel messages via events.NewMessage over a persistent MTProto connection. Message object exposes id, date (UTC), message text, entities, views, forwards, edit_date, reply_to. Full history via iter_messages for backtesting a channel's historical calls.",
+    "base_url_or_pkg": "pip install telethon; api_id/api_hash from my.telegram.org; underlying method messages.getHistory",
+    "auth": "Real Telegram user account (phone number) + api_id/api_hash. Session persisted to disk.",
+    "cost": "Free. Real costs are SIMs and the risk of account limitation/deletion (Telethon documents both).",
+    "rate_limits": "Hard platform cap: a single account can be a member of at most 500 channels and supergroups combined (1,000 with Premium). Up to 3 accounts in official clients (4-6 in some apps). 50 channel/group creations per day. FloodWaitError must be caught and honored. Sub-second delivery, no polling interval."
+   },
+   {
+    "name": "TGStat",
+    "what_it_gives": "Cross-Telegram index of 2,832,100 channels and 286,300 groups, 63.37bn posts, +33.7m/day. Post search with morphological and faceted filtering, channel/group catalog and ratings, monitoring, API for statistics and post search, plus a callback API.",
+    "base_url_or_pkg": "tgstat.com (API host advertised as api.tgstat.org \u2014 DNS did not resolve from this environment; verify before depending on it)",
+    "auth": "API token",
+    "cost": "Free tier: 20 recent posts per search, 7-day result window. Personal 2,940 RUB/month: 1,000 posts per search, group search, all filters. Corporate 6,300 RUB/month: up to 5 accounts.",
+    "rate_limits": "Not published. Index latency: 'present in search results as soon as in 7 seconds after being posted'."
+   },
+   {
+    "name": "Kaito (Yaps / Pro API)",
+    "what_it_gives": "Formerly a free public Yaps attention-score endpoint. Kaito Pro claims coverage of 2,000 tokens plus mindshare metrics.",
+    "base_url_or_pkg": "https://api.kaito.ai/api/v1/yaps?username=<handle>",
+    "auth": "Now required \u2014 the endpoint returned {\"message\":\"Unauthorized\"} when I called it unauthenticated on 2026-08-23.",
+    "cost": "Kaito Pro Enterprise Single-Seat $833/month billed annually. API access is 'Contact Sales' with no published price. Yaps post-to-earn was sunset in January 2026 and the Yaps Open Protocol doc page now returns 404.",
+    "rate_limits": "Historically documented as 100 calls per 5 minutes for the public Yaps endpoint; no longer verifiable."
+   },
+   {
+    "name": "twscrape (self-hosted)",
+    "what_it_gives": "Async Python library and CLI over X Search and GraphQL endpoints: search, tweet details and replies, user profiles and timelines, followers/following, bookmarks, communities, trends. Returns SNScrape-style models or raw API responses.",
+    "base_url_or_pkg": "pip install twscrape ; github.com/vladkens/twscrape (~2.7k stars)",
+    "auth": "Your own pool of authorized X accounts \u2014 browser cookies (auth_token + ct0) or username/password with email verification. Sessions kept in SQLite.",
+    "cost": "Free software. Real cost is X accounts plus residential proxies plus ongoing breakage maintenance.",
+    "rate_limits": "Tracked per account per endpoint; the library locks a limited account for that operation until reset and rotates to another. Effective throughput scales with pool size."
+   },
+   {
+    "name": "Nitter (self-hosted)",
+    "what_it_gives": "Alternative X front-end with RSS. Not archived; 1,336 commits.",
+    "base_url_or_pkg": "github.com/zedeus/nitter",
+    "auth": "'Running a Nitter instance now requires real accounts, since Twitter removed the previous methods.' Session tokens per the project wiki. Valkey recommended over Redis.",
+    "cost": "Free software; same account/proxy costs as twscrape.",
+    "rate_limits": "Public instances are effectively dead \u2014 guest tokens expired in February 2024. Self-hosting inherits per-account X limits."
+   }
+  ],
+  "numeric_parameters": [
+   {
+    "param": "has_telegram in launch metadata \u2014 score bonus",
+    "value": "Apply a positive prior equivalent to ~8.9x lift; only ~2.4% of launches carry it",
+    "rationale": "Kaplan-Meier on 832,941 pump.fun launches: 1.4850% [1.327, 1.661] graduation with an advertised Telegram channel (n=20,270) vs 0.1661% without (n=812,671), log-rank p<1e-300, multivariate Cox HR 5.402 [4.733, 6.166]. Strongest published social variable by a wide margin. Read as a fast-regime (~6 min) lower bound."
+   },
+   {
+    "param": "has_twitter in launch metadata \u2014 score bonus",
+    "value": "Effectively zero; do NOT use as a positive gate",
+    "rationale": "0.2268% [0.214, 0.240] with vs 0.1486% [0.136, 0.163] without; Cox HR only 1.305 [1.192, 1.428]. 528,126 of 832,941 launches (63.4%) advertise one, so it discriminates almost nothing. social_count is also non-monotonic (2 channels = 0.1655%, worse than 1 channel = 0.2293%), confirming the signal is the Telegram indicator alone."
+   },
+   {
+    "param": "All three socials (twitter + website + telegram)",
+    "value": "1.9186% graduation, n=13,708 (1.65% of launches), 17.4x lift over zero-social 0.1104%",
+    "rationale": "Same dataset. A very tight, high-prior subset. Useful as a high-conviction bucket given a base rate where only 7.5% of launches ever 2x."
+   },
+   {
+    "param": "Maximum acceptable social-feed latency for an entry trigger",
+    "value": "None available below ~6 seconds except direct Telegram MTProto (sub-second)",
+    "rationale": "X Filtered Stream P99 6-7s (X's own docs) = 16-19 Solana slots at the 359-375 ms/slot I measured live via getRecentPerformanceSamples. SocialData monitors ~30s. TGStat index 7s. Telegram Telethon events.NewMessage is push, sub-second. If a signal must trigger an order, it must come from Telethon."
+   },
+   {
+    "param": "Holding-period ceiling if you ever trade a call",
+    "value": "~120 seconds to peak; ~210 seconds to below the pre-call price",
+    "rationale": "Clough & Edwards: price 'peaks for around two minutes'. Xu & Livshits case study: 'Three and half minutes after the start of the pump-and-dump, the coin price had dropped below its open price.' Their whole \u0394P metric uses a 5-minute post-announcement window."
+   },
+   {
+    "param": "Expected max gain if buying at the call",
+    "value": "+15.02% average on liquid venues; +790.54% average on illiquid venues; expected value NEGATIVE net of the dump",
+    "rationale": "Clough & Edwards, 10,687 events across 765 coins, 5-minute max-price window. Dhawan & Putni\u0146\u0161 (355 cases) state participants join 'despite negative expected returns' with 65% average price distortion. The 790% figure is on venues where you cannot exit size \u2014 exactly the regime your 2%-of-pool-depth cap exists to avoid."
+   },
+   {
+    "param": "Assumed head start held by everyone ahead of you",
+    "value": "1-10 seconds on tiered Telegram channels; sell-side flow already present at second 19",
+    "rationale": "La Morgia et al.: per-level advantage 0.5-1 second, maximum advantage 'in the interval between 1 and 10 seconds'; abnormal sell volume of ~10 BTC observed at the 19th second of the OAX pump while members were still buying."
+   },
+   {
+    "param": "Per-channel front-run test threshold",
+    "value": "Reject a channel if the median (first on-chain buy timestamp \u2212 channel post timestamp) is negative",
+    "rationale": "Xu & Livshits document channels announcing at the peak and pre-announcement price elevation exceeding the pump-window return on Cryptopia. A negative median gap means buys systematically precede the post, i.e. the channel is a distribution venue, not a signal."
+   },
+   {
+    "param": "Do not weight calls by audience size",
+    "value": "Correlation between announcement views and pump gain = \u22120.162",
+    "rationale": "Xu & Livshits. Examples: MST 325 views \u2192 12.6% gain; PARTY 18 views \u2192 533.3% gain. Weight channels by realised forward return of their posted CAs instead."
+   },
+   {
+    "param": "Coordinated-supply threshold",
+    "value": "36.5% of token supply held by coordinated (bundled) accounts on average",
+    "rationale": "MELT dataset, 41k+ Solana launches, 200M+ transactions. This is the population mean, so it is the baseline your holder-concentration filter must beat, not a red line. $HAWK had 96% in one cluster; $LIBRA 82%."
+   },
+   {
+    "param": "Buyer-count vs SOL-inflow split in the participation-evidence window",
+    "value": "Weight non-cohort SOL inflow, not unique buyer count",
+    "rationale": "Coordinated sniper cohorts produce a contamination-adjusted +16.1% [+13.0%, +19.4%] first-30-minute BUYER-COUNT lift but only +6.3% [\u22120.5%, +15.1%] SOL-inflow lift, not distinguishable from zero. 7.0% of cohort-treated launches (382/5,419) had zero non-cohort buyers at 30 minutes."
+   },
+   {
+    "param": "Hacked/repurposed X account veto",
+    "value": "account created_at > 365 days ago AND first crypto-related post < 14 days old AND a long inactivity gap immediately before the crypto pivot",
+    "rationale": "created_at survives handle repurposing (Sorsa User model); user IDs never change (GET /username-to-id). Bubblemaps' Matt Furie case documents extended prior inactivity plus location mismatch plus four token promotions in one week. Precision/recall of this exact rule is UNMEASURED \u2014 treat as a heuristic veto, not a validated classifier."
+   },
+   {
+    "param": "Repeat-promoter veto (strongest documented signature, on-chain, free)",
+    "value": "Reject if the same wallet cluster appears in the top-10 realised-PnL set for 2+ tokens promoted by the same X handle within 30 days",
+    "rationale": "Bubblemaps: 'the same wallets tended to top the profit-and-loss tables on each promoted token' across $BOYZ, $MEGUSTA, $DORK, $MUFFIN. This is computable entirely from chain data you already index."
+   },
+   {
+    "param": "Bot-amplification proxy (Botometer replacement)",
+    "value": "Flag when >50% of distinct engaging accounts have created_at within 90 days, or followers/followings < 0.1, or near-duplicate mention text rate > 30%",
+    "rationale": "Calibration anchor: 61% of 283,409 sampled NFT-promotion retweeters were bot-like at Botometer t=0.43, and 36% of the promoted projects were fraudulent. Botometer's service is no longer usable post-API-repricing, so these are constructible substitutes. Thresholds are MY proposal, not measured \u2014 tune against your own labelled set."
+   },
+   {
+    "param": "Scam-promoter profile calibration point",
+    "value": "Median 3.7k followers, median 198 likes across first 10 timeline posts",
+    "rationale": "Saha Roy et al., measured on 382 verified-fraudulent projects detected at 95.2% TPR. Useful as a centroid for 'looks engaged but is manufactured'."
+   },
+   {
+    "param": "Telegram ingestion capacity planning",
+    "value": "500 channels per account (1,000 with Premium); plan N accounts = ceil(target_channels / 500)",
+    "rationale": "Hard Telegram platform limit on combined channel + supergroup membership. Also 50 channel/group creations per day, 3 accounts per official client."
+   },
+   {
+    "param": "Per-launch X enrichment cost (1 profile + 20 mentions)",
+    "value": "$0.110 official X; ~$0.0032 twitterapi.io; ~$0.0042 SocialData; 2 requests on Sorsa",
+    "rationale": "Official: $0.010 User read + 20 \u00d7 $0.005 Post read. twitterapi.io: $0.18/1K profiles + $0.15/1K tweets. SocialData: 21 items \u00d7 $0.0002. At 200 qualifying launches/day: $660/mo vs $19/mo vs $25/mo vs $49/mo flat (Sorsa Starter, 10K requests covers 12K/mo only at Pro $199)."
+   },
+   {
+    "param": "Minimum sample before evaluating whether a social feature helped",
+    "value": "Well above 300 trades; 190 trades was demonstrably too few",
+    "rationale": "A live 190-trade Solana deployment showed population excess kurtosis 6.61 and skewness \u22121.21, and removing the top 3 trades (1.6% of sample) flipped cumulative return from +117.7% to unprofitable. Any A/B on a social feature at n<300 is noise."
+   },
+   {
+    "param": "Rejection-tracking benchmark",
+    "value": "Track forward returns of rejected tokens; 56.25% of rejects (27/48) hit \u221250% within 6 hours in one measured cohort",
+    "rationale": "arXiv:2606.08232, 4,874 forward observations across 184 rejection events. The full-cohort figure of 17.9% is a censored lower bound. This is how you prove a filter is net-positive rather than assuming it."
+   }
+  ],
+  "traps_and_failure_modes": [
+   "Filtered Stream looks free because there is no connection charge \u2014 but every Post the stream delivers is billed at $0.005. A broad rule matching pump.fun mentions or base58 CA patterns will deliver tens of thousands of posts a day. At 50,000 posts/day that is $250/day / $7,500/month for data you can get from twitterapi.io for under $20. Never write a high-recall stream rule on the official API.",
+   "The 24-hour UTC deduplication window is the single biggest cost lever on the official API and almost nobody models it. Re-reading the same Post or user within the same UTC day is free; issuing a new search that returns fresh resources is not. Structure monitoring as re-reads, not re-searches.",
+   "Six to seven seconds of P99 stream latency is 16-19 Solana slots (I measured 359-375 ms/slot live). Any strategy whose entry depends on being first to a tweet is already lost on the pay-per-use tier. Powerstream \u2014 the only sub-second X product \u2014 is Enterprise-only with no published price.",
+   "SocialData's monitoring API says in its own docs 'We do not promise real-time delivery' and recommends against sub-second use. People build trade triggers on it anyway and then attribute the resulting slippage to execution.",
+   "LunarCrush Individual at $90/mo gives 2,000 requests per DAY. That is 1.4/minute. It cannot service a per-launch pipeline, and its universe is curated coins/topics \u2014 a 90-second-old Solana mint is not in coverage at all. The marketing does not mention this; the rate-limit table does.",
+   "Santiment Sanbase Pro ($49/mo) explicitly serves API data with a 30-DAY LAG. Only Sanbase Max at $249/mo gives real-time API. Worse: Santiment documents that historical social metric values are recalculated for the previous month when labels or sources change \u2014 so a backtest you ran in March is not reproducible in May.",
+   "Kaito's Yaps endpoint is a zombie reference in dozens of tutorials and repos. It now returns {\"message\":\"Unauthorized\"} and the Open Protocol doc page 404s. Yaps post-to-earn was sunset in January 2026. No published evidence has ever linked yaps or mindshare to memecoin returns \u2014 it is sold as alpha and is unverified marketing.",
+   "Botometer, the tool every bot-detection paper uses (including the 61%-bots NFT result), is no longer operable after X's API repricing. Any 2026 plan that says 'we'll score accounts with Botometer' is dead on arrival; you must build and calibrate your own classifier.",
+   "Nitter's public-instance model is dead \u2014 guest tokens expired February 2024 and, per 2025 reporting, guest tokens became fingerprint-bound with datacenter IPs permanently banned. The project is NOT archived, which misleads people into thinking free scraping still works; the README now requires real accounts and session tokens.",
+   "twscrape and self-hosted Nitter shift the cost from dollars to account attrition, residential proxies, and unscheduled 3am breakage when X changes GraphQL. For a production trading loop the $20-40/month saved over twitterapi.io is not worth the outage risk on a component you cannot patch quickly.",
+   "Weighting a call by channel size or view count is backwards: measured correlation between announcement views and pump gain is \u22120.162, with a 18-view announcement producing 533% and a 325-view announcement producing 12.6%. Every retail 'top KOL' leaderboard product is built on the wrong variable.",
+   "Tiered Telegram channels deliberately give VIPs a 1-10 second head start, and admin/bot sell volume is measurable at second 19 of the pump. You are structurally in the last cohort of any public channel. If you cannot measure the gap between first on-chain buy and the post timestamp, you do not know which cohort you are in.",
+   "Buyer COUNT in the early window is a contaminated metric: coordinated sniper cohorts produce a +16.1% buyer-count lift with a SOL-inflow lift statistically indistinguishable from zero, and 7.0% of cohort-treated launches had zero non-cohort buyers at 30 minutes. If your participation-evidence check counts wallets, you are being farmed by exactly the actors you are trying to avoid.",
+   "The 'hacked account' explanation is itself a red flag pattern, not an exoneration. Bubblemaps documented four promotions in one week, three claimed compromises in one month with no security remediation, and the same wallets topping the PnL table on every promoted token. Treat repeated compromise claims as evidence of insider promotion, not of victimhood.",
+   "Every large-sample study that computes it finds buying at the call is negative-EV: Dhawan & Putni\u0146\u0161 state participation occurs 'despite negative expected returns'; Xu & Livshits find insiders taking 18% aggregate while participants absorb the mirror loss, and document a channel that announced at the peak. Any product selling call-following as a strategy is selling exit liquidity.",
+   "The two best published Solana memecoin risk models (MELT, 41k launches / 200M transactions; Catching the Rug, 6.4M tokens) contain literally zero social features. If X and Telegram data were load-bearing, the state of the art would use it. Do not let a social score override an on-chain reject.",
+   "No published work establishes predictive value for 'first mention velocity' on memecoins. The nearest honest results are a \u22656-hour Granger lag on majors only (mixed across coins and periods) and a finding that AGGREGATE finfluencer video counts Granger-cause price while TOP finfluencers' videos do not. Anyone quoting a mention-velocity threshold at you invented it.",
+   "Public channel-size rankings are useless for discovering call channels: TGStat's crypto leaderboard is dominated by tap-to-earn and airdrop farms (Blum 15.3M, Major 11.8M, DOGS 7.4M subscribers). The real Solana call channels are private or handle-rotating. Bootstrap your channel list from t.me links in launch metadata instead.",
+   "Moby (moby.trade domain expired), Alphanomics (maintenance page), and ChainEdge (no pricing page, no public API docs) are not integrable in August 2026. Do not architect around any of them.",
+   "The pay-per-use Post-read cap is 3,000,000/month per the official docs, not the 2,000,000 that several 2026 blog posts repeat, and the ubiquitous '$42,000/month Enterprise' figure appears in no primary source I could find. Legacy Basic $200 / Pro $5,000 tiers are claimed by third parties to survive for grandfathered accounts but appear nowhere on docs.x.com.",
+   "Elfa's keyword-mentions endpoint returns NO raw tweet text \u2014 only a link field \u2014 and caps metadata.total at 10,000. If your model needs text (duplicate-content detection, LLM sentiment), you must pay a second vendor to fetch the tweets, doubling the per-token cost.",
+   "The pump.fun graduation-rate study whose Telegram effect you would rely on is explicitly scoped as a ~6-minute fast-regime lower bound, because its collector polled a top-50-newest endpoint and lost mints that scrolled off. The author documents this and withdraws an attempted correction that failed on-chain verification (0 of 100 sampled mints). Use the direction and the relative ordering of the hazard ratios; do not use the absolute rates as 24-hour probabilities.",
+   "At n<300 trades on a distribution with excess kurtosis 6.6, any evaluation of whether a social feature helped is statistical theater. One documented deployment flipped from +117.7% cumulative to unprofitable when the top 3 of 190 trades were removed. Pre-commit sample size and pre-register the test before you add an X feature to the scorer."
+  ]
+ },
  "What actually-profitable memecoin traders do \u2014 mechanical rules with numbers (Solana / pump.fun, 2024\u20132026 sources)": {
   "topic": "What actually-profitable memecoin traders do \u2014 mechanical rules with numbers (Solana / pump.fun, 2024\u20132026 sources)",
   "executive_summary": "Three separate bodies of evidence were reachable: (1) shared screener presets from Axiom/BullX/GMGN/Solana-Tracker with real numeric thresholds, (2) two peer-reviewable arXiv datasets (MELT/MemeTrans, 41,470 launches; and a 655,770-token pump.fun census) that give hard base rates and feature importances, and (3) trader/vendor blog content that is mostly rule-shaped but unsourced.\n\nThe single most important quantitative finding for your bot: 60.26% of migrated memecoins drop below 20% of migration price within 20 minutes, and >73% drop below 40% within 20 minutes (MELT, n=41,470, Dec 2024\u2013Mar 2025). This is a direct, hostile measurement of the popular \"buy the post-graduation dip\" trade \u2014 the dip is not a dip, it is the modal outcome. Your census's 1.000x median peak multiple is fully consistent with it.\n\nSecond most important: naive top-10 concentration systematically understates true concentration. After attributing bundled/co-funded wallets to single entities, median top-10 holding rises 24 percentage points for high-risk tokens vs only 6pp for low-risk ones. Your safety filter excludes pool addresses but if it does not cluster bundles (Jito bundle ID, co-purchase in same slot, common funding wallet), it is measuring the wrong quantity \u2014 and it is measuring it in exactly the way the adversary optimized against. Bundled accounts are 28.13% of holders and 36.50% of supply on average.\n\nThird: the strongest published predictor of pump.fun graduation is liquidity accumulation speed (trades-to-vSOL ratio) \u2014 tokens reaching a given vSOL level in \u226410 trades graduate far more often than those needing 1,000+ \u2014 with non-bot trade share second (thresholds \u22650.3 and \u22650.7 both show step-ups). Median time-to-graduation is 4.4 minutes over ~457 trades. Note the tension with your design: your 60\u2013300s wait is well-calibrated for filtering bot-only launches, but by 300s the median graduating token has already graduated, so your feed is structurally biased toward slower, more organic movers. That is probably correct for survival but you should confirm it is not also selecting out the winners.\n\nThe consensus mechanical numbers that recur across independent presets: top-10 \u226430% (strict) or \u226440% (permissive, early tokens); snipers \u226410\u201315%, hard reject >20%; dev/creator holding \u226410%; insiders \u226415\u201325%; bundle \u226420%; market-cap floor $9k\u2013$20k; volume floor $2k (new) to $7\u201310k (post-graduation); holders \u2265100 in hour one, \u2265200\u2013500 for concentration comfort; buy/sell ratio \u22652:1; token age windows 10\u201345 minutes.\n\nExit rules cluster tightly and independently on: stop at \u221230% to \u221250%, first rung at 1.5x\u20132x selling 25\u201350%, ladder 25% each at 2x/3x/5x/10x, and a time stop at 6\u201312 hours of no movement. Your 1.6x cost-recovery rung sits just below the modal 2x first rung \u2014 defensible given a 7.5% ever-2x base rate.\n\nExplicitly unverifiable marketing: every \"75% win rate\" / \"65\u201375% win rate\" filter-preset claim, all \"sub-50ms\" and \"70% same-block\" execution claims, and the widely-repeated \"healthy coin has \u226510% of market cap in liquidity\" heuristic (no study underlies it). No genuine shared Dexscreener saved-filter URLs were locatable, and Photon's S1/S2/S3 \"presets\" are slippage/priority-fee profiles, not alpha filters \u2014 the marketing conflates the two. YouTube transcripts and X threads were not retrievable in full (transcript services returned only chapter metadata; the WebSearch budget was exhausted at 200 calls before Reddit/X could be worked directly), so trader-attributed rules below come from written secondary sources, not primary posts. I have marked those low confidence rather than inventing attributions.",

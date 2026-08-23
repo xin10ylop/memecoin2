@@ -1,0 +1,474 @@
+<title>Degen Trading System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F7F8F9; --surface:#FFFFFF; --sunk:#EFF2F4;
+  --ink:#111A1F; --ink-2:#33424B; --muted:#5F707A; --faint:#8896A0;
+  --rule:#DBE1E6; --rule-strong:#C3CCD3;
+  --signal:#0273A8; --signal-soft:#DCEBF4;
+  --warn:#BC5F14; --warn-soft:#F6E7DA;
+  --shadow:0 1px 2px rgba(17,26,31,.05), 0 8px 24px -16px rgba(17,26,31,.22);
+  --maxw:71ch;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1315; --surface:#151C20; --sunk:#111819;
+    --ink:#E6ECEF; --ink-2:#BAC6CD; --muted:#8B9AA3; --faint:#6B7A83;
+    --rule:#242F35; --rule-strong:#33424A;
+    --signal:#3B96BE; --signal-soft:#12303E;
+    --warn:#CE7F32; --warn-soft:#38260F;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1315; --surface:#151C20; --sunk:#111819;
+  --ink:#E6ECEF; --ink-2:#BAC6CD; --muted:#8B9AA3; --faint:#6B7A83;
+  --rule:#242F35; --rule-strong:#33424A;
+  --signal:#3B96BE; --signal-soft:#12303E;
+  --warn:#CE7F32; --warn-soft:#38260F;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16.5px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+.bleed{max-width:min(96ch,100% - 48px); margin-inline:auto}
+
+h1,h2,h3{font-family:Spectral,Georgia,"Times New Roman",serif; text-wrap:balance; margin:0}
+h1{font-size:clamp(2.1rem,5.2vw,3.05rem); font-weight:600; line-height:1.08; letter-spacing:-.015em}
+h2{font-size:clamp(1.4rem,3vw,1.72rem); font-weight:600; line-height:1.2; letter-spacing:-.01em}
+h3{font-size:1.06rem; font-weight:600; line-height:1.3}
+p{margin:0}
+a{color:var(--signal)}
+strong{font-weight:600}
+code,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums}
+code{font-size:.88em; background:var(--sunk); padding:.1em .38em; border-radius:4px}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:.685rem; font-weight:500;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+}
+
+/* ---------- masthead ---------- */
+header.mast{border-bottom:1px solid var(--rule); background:var(--surface)}
+.mast-in{max-width:var(--maxw); margin:0 auto; padding:62px 24px 40px; display:flex; flex-direction:column; gap:20px}
+.thesis{font-family:Spectral,Georgia,serif; font-size:1.24rem; line-height:1.5; color:var(--ink-2); max-width:60ch}
+.thesis em{color:var(--ink); font-style:italic}
+.provenance{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--faint)}
+
+/* ---------- stat strip ---------- */
+.stats{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  border-top:1px solid var(--rule); background:var(--surface);
+}
+.stat{padding:22px 24px; border-right:1px solid var(--rule)}
+.stat:last-child{border-right:none}
+.stat .v{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:1.62rem; font-weight:600; line-height:1.05; letter-spacing:-.02em}
+.stat .k{font-size:.775rem; color:var(--muted); margin-top:5px; line-height:1.35}
+.stat.hero .v{color:var(--signal)}
+
+section{padding:52px 0 4px}
+section > .wrap > * + *{margin-top:18px}
+.lede{font-size:1.06rem; color:var(--ink-2)}
+hr.sep{border:0; border-top:1px solid var(--rule); margin:52px auto 0; max-width:min(96ch,100% - 48px)}
+
+/* ---------- tables ---------- */
+.tblwrap{overflow-x:auto; margin-top:26px; border:1px solid var(--rule); border-radius:9px; background:var(--surface); box-shadow:var(--shadow)}
+table{border-collapse:collapse; width:100%; font-size:.865rem}
+caption{text-align:left; padding:15px 18px 0; font-size:.79rem; color:var(--muted)}
+th,td{padding:9px 14px; text-align:left; border-bottom:1px solid var(--rule); white-space:nowrap}
+thead th{
+  font-family:"IBM Plex Mono",monospace; font-size:.665rem; font-weight:500; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); background:var(--sunk); border-bottom:1px solid var(--rule-strong);
+}
+tbody tr:last-child td{border-bottom:none}
+td.n{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; text-align:right}
+tr.accent td{background:var(--signal-soft)}
+tr.accent td:first-child{font-weight:600}
+
+/* bar cell: single-series magnitude, baseline-anchored, rounded data end */
+td.bar{width:180px; padding-right:18px}
+.track{position:relative; height:9px; background:var(--sunk); border-radius:5px; overflow:hidden}
+.fill{position:absolute; inset:0 auto 0 0; background:var(--signal); border-radius:0 4px 4px 0; min-width:2px}
+.fill.warn{background:var(--warn)}
+
+/* ---------- funnel ---------- */
+.funnel{display:flex; flex-direction:column; gap:2px; margin-top:26px}
+.step{display:grid; grid-template-columns:1fr auto; align-items:center; gap:16px;
+  background:var(--surface); border:1px solid var(--rule); padding:13px 17px}
+.step:first-child{border-radius:9px 9px 2px 2px}
+.step:last-child{border-radius:2px 2px 9px 9px}
+.step .label{font-size:.9rem}
+.step .label small{display:block; color:var(--muted); font-size:.775rem; margin-top:1px}
+.step .count{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:1.02rem; font-weight:600; text-align:right}
+.step .count small{display:block; font-weight:400; font-size:.72rem; color:var(--muted)}
+.step .meter{grid-column:1/-1; height:7px; background:var(--sunk); border-radius:4px; overflow:hidden; margin-top:9px}
+.step .meter i{display:block; height:100%; background:var(--signal); border-radius:0 4px 4px 0}
+
+/* ---------- callouts ---------- */
+.note{
+  border-left:2.5px solid var(--signal); background:var(--surface);
+  padding:16px 20px; border-radius:0 8px 8px 0; margin-top:26px;
+}
+.note.caution{border-left-color:var(--warn)}
+.note .eyebrow{margin-bottom:7px; display:flex; align-items:center; gap:7px}
+.note .eyebrow::before{content:""; width:6px; height:6px; border-radius:50%; background:var(--signal)}
+.note.caution .eyebrow::before{background:var(--warn)}
+.note p + p{margin-top:11px}
+
+/* ---------- pipeline (a real sequence, so it is numbered) ---------- */
+ol.pipe{list-style:none; padding:0; margin:26px 0 0; counter-reset:s;
+  display:grid; gap:2px}
+ol.pipe li{counter-increment:s; display:grid; grid-template-columns:auto 1fr; gap:15px;
+  background:var(--surface); border:1px solid var(--rule); padding:14px 17px; align-items:baseline}
+ol.pipe li:first-child{border-radius:9px 9px 2px 2px}
+ol.pipe li:last-child{border-radius:2px 2px 9px 9px}
+ol.pipe li::before{
+  content:counter(s,decimal-leading-zero); font-family:"IBM Plex Mono",monospace;
+  font-size:.7rem; font-weight:600; color:var(--signal); letter-spacing:.04em;
+}
+ol.pipe b{display:block; font-weight:600; font-size:.93rem}
+ol.pipe span{display:block; color:var(--muted); font-size:.845rem; margin-top:2px}
+
+ul.plain{margin:14px 0 0; padding-left:1.15em}
+ul.plain li{margin-bottom:9px}
+ul.plain li::marker{color:var(--faint)}
+
+pre{
+  background:var(--surface); border:1px solid var(--rule); border-radius:9px;
+  padding:16px 18px; overflow-x:auto; margin-top:22px;
+  font-family:"IBM Plex Mono",monospace; font-size:.815rem; line-height:1.75; color:var(--ink-2);
+}
+pre b{color:var(--ink); font-weight:600}
+pre i{color:var(--faint); font-style:normal}
+
+footer{border-top:1px solid var(--rule); margin-top:60px; padding:30px 0 64px}
+footer .wrap{color:var(--faint); font-size:.79rem}
+
+:focus-visible{outline:2px solid var(--signal); outline-offset:2px; border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+@media (max-width:560px){
+  .stat{border-right:none; border-bottom:1px solid var(--rule)}
+  td.bar{width:104px}
+}
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <div class="eyebrow">Solana · quantitative memecoin trading</div>
+    <h1>Degen Trading System</h1>
+    <p class="thesis">The predictive signal does not exist at <em>t=0</em>. At the moment a token is minted there is nothing to measure but its creator's history. The information arrives over the next one to five minutes, as real participants either show up or they don't — so this system deliberately does not snipe the mint.</p>
+    <div class="provenance">
+      <span>measured on 2,676 launches</span><span>107,112 snapshots</span><span>unbiased live census</span><span>2026-08-23</span>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="v">1.000×</div><div class="k">Median peak multiple of a new token</div></div>
+    <div class="stat"><div class="v">8.60%</div><div class="k">Ever trade at 2× their first print</div></div>
+    <div class="stat"><div class="v">2.17%</div><div class="k">Ever reach 5×</div></div>
+    <div class="stat hero"><div class="v">2.98%</div><div class="k">Of launches the bot will actually buy</div></div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The base rate</div>
+    <h2>The median new token never goes up</h2>
+    <p class="lede">Not "goes up a little" — never trades above its first observed price at all. This is measured, not assumed: the collector records every new mint within seconds of its first pool and follows it forward, so the census includes the overwhelming majority that die quietly.</p>
+  </div>
+
+  <div class="bleed">
+    <div class="tblwrap">
+      <caption>Peak multiple reached, from the first observed price. n = 1,523 launches caught under 180 seconds old. Wilson 95% intervals.</caption>
+      <table>
+        <thead><tr><th>Outcome</th><th class="n">Count</th><th class="n">Rate</th><th>Rate</th><th class="n">95% CI</th></tr></thead>
+        <tbody>
+          <tr><td>ever ≥ 1.3×</td><td class="n">282</td><td class="n">18.52%</td><td class="bar"><div class="track"><div class="fill" style="width:100%"></div></div></td><td class="n">16.6 – 20.5%</td></tr>
+          <tr><td>ever ≥ 1.5×</td><td class="n">215</td><td class="n">14.12%</td><td class="bar"><div class="track"><div class="fill" style="width:76.2%"></div></div></td><td class="n">12.5 – 16.0%</td></tr>
+          <tr><td>ever ≥ 2×</td><td class="n">131</td><td class="n">8.60%</td><td class="bar"><div class="track"><div class="fill" style="width:46.4%"></div></div></td><td class="n">7.3 – 10.1%</td></tr>
+          <tr><td>ever ≥ 3×</td><td class="n">64</td><td class="n">4.20%</td><td class="bar"><div class="track"><div class="fill" style="width:22.7%"></div></div></td><td class="n">3.3 – 5.3%</td></tr>
+          <tr><td>ever ≥ 5×</td><td class="n">33</td><td class="n">2.17%</td><td class="bar"><div class="track"><div class="fill" style="width:11.7%"></div></div></td><td class="n">1.5 – 3.0%</td></tr>
+          <tr><td>ever ≥ 10×</td><td class="n">13</td><td class="n">0.85%</td><td class="bar"><div class="track"><div class="fill" style="width:4.6%"></div></div></td><td class="n">0.50 – 1.46%</td></tr>
+          <tr><td>ever ≥ 20×</td><td class="n">7</td><td class="n">0.46%</td><td class="bar"><div class="track"><div class="fill" style="width:2.5%"></div></div></td><td class="n">0.22 – 0.95%</td></tr>
+          <tr><td>ever ≥ 50×</td><td class="n">4</td><td class="n">0.26%</td><td class="bar"><div class="track"><div class="fill" style="width:1.4%"></div></div></td><td class="n">0.10 – 0.67%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="note">
+      <div class="eyebrow">Where the money is</div>
+      <p>Mean peak multiple across all 1,523 launches is <strong class="num">5.56×</strong>. Excluding just the top 1% of tokens it is <strong class="num">1.26×</strong>. Essentially the entire expected value of the asset class lives in a handful of tokens, which is why the exit rule matters more than the entry rule — it decides whether the one trade in three hundred pays for the other 299.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">What separates them</div>
+    <h2>Every predictive signal says the same thing</h2>
+    <p class="lede">Measured at a fixed token age using only data available at that instant, against the outcome "peak ≥ 1.3× within the next hour". Splitting each signal into terciles and comparing the top against the bottom:</p>
+  </div>
+
+  <div class="bleed">
+    <div class="tblwrap">
+      <caption>Hit rate by tercile. Base rate across all tokens is 8.3%. Bars show the top-tercile hit rate on a common scale.</caption>
+      <table>
+        <thead><tr><th>Signal at decision time</th><th class="n">Bottom</th><th class="n">Top</th><th>Top tercile</th></tr></thead>
+        <tbody>
+          <tr><td>Liquidity trend</td><td class="n">3.2%</td><td class="n">24.6%</td><td class="bar"><div class="track"><div class="fill" style="width:100%"></div></div></td></tr>
+          <tr><td>Holder-count trend</td><td class="n">1.3%</td><td class="n">24.0%</td><td class="bar"><div class="track"><div class="fill" style="width:97.6%"></div></div></td></tr>
+          <tr><td>Price vs first print</td><td class="n">2.5%</td><td class="n">22.7%</td><td class="bar"><div class="track"><div class="fill" style="width:92.3%"></div></div></td></tr>
+          <tr><td>Holder count</td><td class="n">2.4%</td><td class="n">20.6%</td><td class="bar"><div class="track"><div class="fill" style="width:83.7%"></div></div></td></tr>
+          <tr><td>Liquidity per holder <small>(low is better)</small></td><td class="n">1.3%</td><td class="n">20.4%</td><td class="bar"><div class="track"><div class="fill" style="width:82.9%"></div></div></td></tr>
+          <tr><td>Buy / sell ratio</td><td class="n">2.9%</td><td class="n">18.5%</td><td class="bar"><div class="track"><div class="fill" style="width:75.2%"></div></div></td></tr>
+          <tr><td>Trade count</td><td class="n">3.7%</td><td class="n">16.9%</td><td class="bar"><div class="track"><div class="fill" style="width:68.7%"></div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <p style="margin-top:22px">Liquidity rising, holders arriving, buys outnumbering sells, price above where it started, and — the one that reads oddly until you think about it — <em>low</em> liquidity per holder, which distinguishes many small real buyers from one wallet providing the entire float. They are seven ways of saying <strong>other people are showing up, and they are buying</strong>.</p>
+
+    <div class="note">
+      <div class="eyebrow">The independent one</div>
+      <p>Initial market cap is the strongest single gate and it is nearly <strong>uncorrelated with liquidity</strong> (r = 0.06), so it is genuinely separate evidence rather than a restatement. The 8.7% base 2× rate becomes 14.7% above $3k, 24.3% above $5k, and 35.1% above $7.5k. This came from external research and replicated cleanly on our own census.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Selectivity</div>
+    <h2>Almost everything is rejected</h2>
+    <p class="lede">Of every 100 launches evaluated at the 300-second checkpoint, roughly three survive to become a position. That ratio is the strategy.</p>
+  </div>
+  <div class="bleed">
+    <div class="funnel">
+      <div class="step">
+        <div class="label">Launches evaluated<small>every new mint, caught within seconds</small></div>
+        <div class="count">1,645<small>100%</small></div>
+        <div class="meter"><i style="width:100%"></i></div>
+      </div>
+      <div class="step">
+        <div class="label">Passed the safety filter<small>authorities, extensions, concentration, creator history, floors</small></div>
+        <div class="count">78<small>4.7%</small></div>
+        <div class="meter"><i style="width:4.7%"></i></div>
+      </div>
+      <div class="step">
+        <div class="label">Cleared the conviction score<small>traction, momentum, breadth of participation</small></div>
+        <div class="count">49<small>2.98%</small></div>
+        <div class="meter"><i style="width:2.98%"></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <p style="margin-top:22px">A further deep check runs before any buy — RugCheck's holder graph, LP state, creator's other tokens and Token-2022 extensions — which rejects roughly three of every four that get that far.</p>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The hurdle</div>
+    <h2>What a trade has to clear before it earns a cent</h2>
+    <p class="lede">The pump.fun bonding curve charges 1.25% per side — 0.95% protocol plus a 0.30% creator fee, not the 1% usually quoted. Fixed transaction costs turn out to be almost irrelevant; the proportional costs are the whole game.</p>
+  </div>
+  <div class="bleed">
+    <div class="tblwrap">
+      <caption>Hit rate required to break even, by target multiple, at the measured cost stack. Computed independently and matching published figures to within 0.5pp.</caption>
+      <table>
+        <thead><tr><th>Target</th><th class="n">Total loss on losers</th><th class="n">With the −45% stop</th><th>Reduction</th></tr></thead>
+        <tbody>
+          <tr><td>2×</td><td class="n">52.0%</td><td class="n">35.7%</td><td class="bar"><div class="track"><div class="fill warn" style="width:31.3%"></div></div></td></tr>
+          <tr><td>3×</td><td class="n">34.8%</td><td class="n">21.5%</td><td class="bar"><div class="track"><div class="fill warn" style="width:38.2%"></div></div></td></tr>
+          <tr class="accent"><td>5×</td><td class="n">20.9%</td><td class="n">12.0%</td><td class="bar"><div class="track"><div class="fill warn" style="width:42.6%"></div></div></td></tr>
+          <tr><td>10×</td><td class="n">10.5%</td><td class="n">5.7%</td><td class="bar"><div class="track"><div class="fill warn" style="width:45.7%"></div></div></td></tr>
+          <tr><td>20×</td><td class="n">5.3%</td><td class="n">2.8%</td><td class="bar"><div class="track"><div class="fill warn" style="width:47.2%"></div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="note">
+      <div class="eyebrow">What the stop is worth</div>
+      <p>Cutting the loss at −45% instead of riding positions to zero roughly <strong>halves the hit rate you need</strong>. That is the quantitative case for the hard stop, and it is larger than any plausible improvement to the entry rule.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The exit</div>
+    <h2>Banking a runner that round-trips</h2>
+    <p class="lede">The classic way to lose on a good pick is to ride a 10× back to break-even because no rule ever said to sell. The policy recovers cost basis early, then thins into strength while a ratcheting trail protects what's left.</p>
+    <pre><b>Cost recovery</b>   sell 40% at 1.6×   <i>most of the stake off the table</i>
+<b>Ladder</b>          25% at 2.5×  ·  15% at 4×  ·  10% at 8×  ·  5% at 20×
+<b>Trailing stop</b>   armed only <i>after</i> the first rung, tightening 45% → 22%
+<b>Hard stop</b>       −45% from entry
+<b>Time stop</b>       15 min unless already +12%
+<b>Dump detector</b>   4σ Shewhart control chart on log returns
+<b>Liquidity</b>       immediate exit if the pool halves or becomes unexitable
+
+against a path peaking at 10.2× and returning to 1.0×  →  realises <b>3.59×</b></pre>
+    <p style="margin-top:20px">The trail is deliberately <em>not</em> armed before the first rung. New tokens wick 40% routinely, and an early trailing stop converts survivable noise into realised losses.</p>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">When to buy</div>
+    <h2>Sniping the mint loses money</h2>
+    <p class="lede">The obvious objection to waiting is that you miss the move — the median graduating token graduates in 4.4 minutes. So each entry age was backtested in isolation rather than argued about.</p>
+  </div>
+  <div class="bleed">
+    <div class="tblwrap">
+      <caption>Every checkpoint evaluated on its own. A clean inverted-U in every column, which is far more reassuring than a spike would be.</caption>
+      <table>
+        <thead><tr><th>Entry age</th><th class="n">Trades</th><th class="n">Win rate</th><th class="n">ROI</th><th class="n">Profit factor</th><th>Profit factor</th></tr></thead>
+        <tbody>
+          <tr><td>30 seconds</td><td class="n">19</td><td class="n">31.6%</td><td class="n">−4.4%</td><td class="n">0.81</td><td class="bar"><div class="track"><div class="fill warn" style="width:3.1%"></div></div></td></tr>
+          <tr><td>60 seconds</td><td class="n">49</td><td class="n">65.3%</td><td class="n">+26.2%</td><td class="n">3.11</td><td class="bar"><div class="track"><div class="fill" style="width:11.7%"></div></div></td></tr>
+          <tr class="accent"><td>180 seconds</td><td class="n">31</td><td class="n">67.7%</td><td class="n">+157.9%</td><td class="n">26.55</td><td class="bar"><div class="track"><div class="fill" style="width:100%"></div></div></td></tr>
+          <tr><td>300 seconds</td><td class="n">25</td><td class="n">48.0%</td><td class="n">+24.2%</td><td class="n">2.23</td><td class="bar"><div class="track"><div class="fill" style="width:8.4%"></div></div></td></tr>
+          <tr><td>10 minutes</td><td class="n">22</td><td class="n">45.5%</td><td class="n">+14.2%</td><td class="n">2.00</td><td class="bar"><div class="track"><div class="fill" style="width:7.5%"></div></div></td></tr>
+          <tr><td>30 minutes</td><td class="n">4</td><td class="n">25.0%</td><td class="n">−9.9%</td><td class="n">0.23</td><td class="bar"><div class="track"><div class="fill warn" style="width:0.9%"></div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="wrap">
+    <p style="margin-top:22px">At 30 seconds there is nothing to measure and the bot is buying at the base rate, where the median token never moves. By half an hour the move has already happened and what remains is the distribution. <strong>The information arrives in between, and peaks near three minutes.</strong></p>
+    <div class="note">
+      <div class="eyebrow">What narrowing the window bought</div>
+      <p>Both tails were losing configurations, not merely weaker ones, so the entry window was cut to 60–300 seconds. Headline ROI <em>fell</em> from 94% to 72% — and the 95% confidence interval on expectancy per trade moved from <span class="num">[0.002, 0.694]</span> to <span class="num">[0.052, 0.640]</span>, positive across its whole range. Fewer marginal trades, a more reliable edge.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Results</div>
+    <h2>Encouraging, and not yet evidence</h2>
+    <p class="lede">Backtested with AMM fills priced against reconstructed pool reserves, three-second execution latency, and the full measured cost stack including failed-transaction retries.</p>
+  </div>
+  <div class="bleed">
+    <div class="tblwrap">
+      <caption>Strategy comparison on collected snapshots. Every row pays the same corrected fee stack.</caption>
+      <table>
+        <thead><tr><th>Strategy</th><th class="n">Trades</th><th class="n">Win rate</th><th class="n">ROI</th><th class="n">Expectancy</th><th class="n">Profit factor</th></tr></thead>
+        <tbody>
+          <tr><td>Buy everything</td><td class="n">390</td><td class="n">8.7%</td><td class="n">−1.35%</td><td class="n">0.99×</td><td class="n">0.89</td></tr>
+          <tr><td>Holders ≥ 20</td><td class="n">58</td><td class="n">41.4%</td><td class="n">+29.0%</td><td class="n">1.28×</td><td class="n">2.69</td></tr>
+          <tr><td>+ market-cap gate, corrected fees</td><td class="n">69</td><td class="n">60.9%</td><td class="n">+89.9%</td><td class="n">2.01×</td><td class="n">7.31</td></tr>
+          <tr class="accent"><td>Full pipeline, tuned window</td><td class="n">78</td><td class="n">61.5%</td><td class="n">+72.0%</td><td class="n">1.67×</td><td class="n">6.56</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tblwrap">
+      <caption>Robustness. A result carried by one lucky token is not a strategy, so the honest test is deleting the best trades.</caption>
+      <table>
+        <thead><tr><th>Trades removed</th><th class="n">Total PnL</th><th class="n">Mean per trade</th><th class="n">Win rate</th></tr></thead>
+        <tbody>
+          <tr><td>none</td><td class="n">+20.84 SOL</td><td class="n">+0.267</td><td class="n">61.5%</td></tr>
+          <tr><td>best 1</td><td class="n">+7.77 SOL</td><td class="n">+0.101</td><td class="n">61.0%</td></tr>
+          <tr><td>best 2</td><td class="n">+6.82 SOL</td><td class="n">+0.090</td><td class="n">60.5%</td></tr>
+          <tr class="accent"><td>best 3</td><td class="n">+5.97 SOL</td><td class="n">+0.080</td><td class="n">60.0%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <p style="margin-top:22px">It survives deleting its three best trades and the median trade returns 1.15×, so this is not a single-outlier artefact — which an earlier, cruder version of the rule genuinely <em>was</em>, with 93.9% of its profit coming from one token.</p>
+
+    <div class="note caution">
+      <div class="eyebrow">What these numbers are not</div>
+      <p><strong>78 trades from a few hours of one day, in one market regime.</strong> Memecoin activity is strongly regime-dependent — the published graduation rate ranges from 0.198% to 6.7% across periods, a factor of thirty.</p>
+      <p><strong>Several rule variants were tried against the same data and the best reported.</strong> The correction for that is out-of-sample validation, which has not happened yet.</p>
+      <p><strong>No real transaction has been landed.</strong> Paper and dry modes price against real pool state, but nothing here accounts for failed sends or sandwich attacks on entry.</p>
+      <p><strong>Nobody has published a profitable memecoin selection strategy.</strong> The best published result — a model-guided selection at 76% precision — still loses 26.64% on average, against 60.71% for random selection. A system claiming better deserves proportionate scepticism, including from its author.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The model</div>
+    <h2>Two features that were cheating</h2>
+    <p class="lede">Once the census reached ~7,900 decision rows the trainer stopped refusing. Fitted with purged, embargoed, mint-grouped walk-forward splits it reaches <strong>32.2% precision in the top decile against a 5.95% base rate — a 6.65× lift</strong>, averaging 2.83× peak in that decile.</p>
+    <p>Two feature groups were removed even though both cost measured performance:</p>
+    <ul class="plain">
+      <li><strong>Raw price level.</strong> It correlates with the label only because the label is a ratio — a token priced at 1e-9 reaches 2× on an absolute move a token priced at 1e-4 could never make. Keeping it teaches the model to buy small numbers.</li>
+      <li><strong>Observation cadence.</strong> <code>obs_age</code> and <code>obs_lag</code> were the top two features after that. They are legitimately known at decision time, but they encode this collector's polling schedule rather than the market. Removing them cost lift 5.90 → 5.78 while the top-decile multiple <em>rose</em> 3.00 → 3.12. The edge was never in the sampling artefact.</li>
+    </ul>
+    <div class="note caution">
+      <div class="eyebrow">Read this before the ROI figure</div>
+      <p>The backtest period overlaps the model's training data. The <strong>6.65× out-of-fold lift is the honest number</strong>; the ROI that includes the model is not an out-of-sample estimate, and should be read as "the ranking is useful", not as an expected return.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="sep">
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Architecture</div>
+    <h2>How a token becomes a position</h2>
+    <p class="lede">The backtester and the live trader call the same feature builder, the same filters, the same scorer, the same exit function and the same fill maths. A divergence between paper and live is a bug, not a design choice.</p>
+    <ol class="pipe">
+      <li><div><b>Discover</b><span>Jupiter's recent-token feed, polled every 12s — catches mints within seconds, carrying creator wallet, prior-mint count, holders and buy/sell counts</span></div></li>
+      <li><div><b>Track</b><span>Age-tiered re-polling, every 20s under five minutes old, backing off to two hours — 100 mints per request</span></div></li>
+      <li><div><b>Feature</b><span>Built at a fixed token age using only observations at or before it. Fixing the age removes the confound that makes the obvious design leak</span></div></li>
+      <li><div><b>Filter</b><span>Cheapest checks first: free arithmetic, then one RugCheck call, then RPC. Rejects live authorities, lethal Token-2022 extensions, concentration, factories, thin pools</span></div></li>
+      <li><div><b>Score</b><span>Transparent additive rules, every weight tied to a measured effect. A gradient-boosted model blends in only once the data can train one honestly</span></div></li>
+      <li><div><b>Size</b><span>Fifth-Kelly, capped absolutely and again at 2% of pool depth, scaled by the measured market regime</span></div></li>
+      <li><div><b>Execute</b><span>Self-hosted. No retail platform exposes a supported trading API, and self-hosting saves their ~1% take</span></div></li>
+      <li><div><b>Manage</b><span>Ladder, ratcheting trail, hard/time/liquidity stops and a 4σ dump detector, re-evaluated every five seconds</span></div></li>
+    </ol>
+
+    <h3 style="margin-top:38px">Running it</h3>
+    <pre>degen collect                 <i># build the dataset — run it for weeks</i>
+degen baserates               <i># the honest outcome distribution</i>
+degen scan --top 15           <i># current candidates, with reasons</i>
+degen backtest                <i># evaluate, and read the robustness block</i>
+degen train                   <i># refuses if the data cannot support a model</i>
+degen trade --mode paper      <i># simulated fills against live prices</i></pre>
+
+    <div class="note">
+      <div class="eyebrow">The sequence that matters</div>
+      <p>Collect for weeks on an always-on host, then paper trade for a month, then <code>--mode dry</code> to compare real quotes against simulated fills, and only then live with a bankroll far below what you eventually intend. The single biggest weakness of everything above is that the collector has run for hours, not weeks.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Every figure on this page was measured by the system on live Solana data, or measured on-chain directly. Where published research disagreed with our own measurements — a reported 8.94× graduation lift from a Telegram link shows 0.50× in this census — the disagreement is recorded rather than resolved by preference. Expect to lose money: the measured base rate is that the median new token never goes up.
+  </div>
+</footer>

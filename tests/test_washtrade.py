@@ -50,3 +50,43 @@ def test_missing_fields_do_not_crash():
 def test_trades_per_trader_is_reported():
     a = assess(ORGANIC)
     assert a.trades_per_trader == round(42 / 28, 3)
+
+
+# ---------------- social disqualifiers ----------------
+
+def test_repurposed_account_signature():
+    from degen.signals.social import looks_repurposed
+    # Old handle, crypto content only in the last week, long prior silence.
+    assert looks_repurposed(account_age_days=900, first_crypto_post_age_days=5, silence_gap_days=200)
+    # A genuinely old crypto account is not flagged.
+    assert not looks_repurposed(account_age_days=900, first_crypto_post_age_days=800, silence_gap_days=0)
+    # A new account is a different problem, not this one.
+    assert not looks_repurposed(account_age_days=20, first_crypto_post_age_days=5, silence_gap_days=0)
+
+
+def test_bot_amplification_flags_a_fresh_account_swarm():
+    from degen.signals.social import Mention, bot_amplification
+    ms = [Mention(f"buy {i}", author=f"a{i}", author_followers=5,
+                  author_created_at=__import__("degen.util.timeutil", fromlist=["now"]).now() - 10*86400)
+          for i in range(10)]
+    r = bot_amplification(ms)
+    assert r["flagged"] and r["fresh_frac"] > 0.5
+
+
+def test_bot_amplification_flags_duplicate_text():
+    from degen.signals.social import Mention, bot_amplification
+    ms = [Mention("same exact shill text", author=f"a{i}") for i in range(10)]
+    assert bot_amplification(ms)["dup_frac"] > 0.3
+
+
+def test_bot_amplification_passes_an_organic_set():
+    from degen.signals.social import Mention, bot_amplification
+    import degen.util.timeutil as T
+    ms = [Mention(f"genuinely different comment number {i} about the token", author=f"a{i}",
+                  author_followers=4000, author_created_at=T.now() - 900*86400) for i in range(10)]
+    assert not bot_amplification(ms)["flagged"]
+
+
+def test_empty_mention_set_is_not_flagged():
+    from degen.signals.social import bot_amplification
+    assert not bot_amplification([])["flagged"]

@@ -22,6 +22,7 @@ swamped by noise there.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -128,7 +129,26 @@ def trim(df, extra: tuple[str, ...] = ()):
     return df[want] if want else df
 
 
-def load_clean(dataset: str = "snapshots", report: bool = False, lean: bool = True):
+SEED_PATH = Path(__file__).resolve().parents[3] / "data" / "seed" / "snapshots_seed.parquet"
+
+
+def load_seed():
+    """The committed census, already cleaned and trimmed.
+
+    Lets a fresh clone run every analysis before collecting anything, and keeps
+    the reported results reproducible. It is under three hours of real uptime
+    from one afternoon - see data/seed/README.md before drawing conclusions from
+    it alone.
+    """
+    import pandas as pd
+
+    if not SEED_PATH.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(SEED_PATH)
+
+
+def load_clean(dataset: str = "snapshots", report: bool = False, lean: bool = True,
+               allow_seed: bool = True):
     """The standard way to load the panel: usable rows only, artefacts removed.
 
     Every analysis path should go through this rather than reading the lake
@@ -138,6 +158,12 @@ def load_clean(dataset: str = "snapshots", report: bool = False, lean: bool = Tr
 
     df = lake().df(dataset)
     if df.empty:
+        if allow_seed and dataset == "snapshots":
+            seed = load_seed()
+            if not seed.empty and report:
+                print(f"lake is empty; using the committed seed census "
+                      f"({len(seed):,} snapshots, {seed.mint.nunique():,} mints)")
+            return seed
         return df
     df = df[df["price_usd"].notna() & (df["price_usd"] > 0)]
     if "age_s" in df.columns:

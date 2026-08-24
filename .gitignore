@@ -1,5 +1,6 @@
 # Collected market data and run artifacts - regenerated, and large.
-data/
+data/*
+!data/seed/
 logs/
 models/*.txt
 *.parquet
